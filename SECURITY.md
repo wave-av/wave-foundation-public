@@ -2,9 +2,8 @@
 
 ## Reporting a vulnerability
 
-This is a private WAVE foundation repository. If you find a security issue — a leaked
-credential, an unsafe hook, a workflow injection, or anything that could affect a consuming
-WAVE project — report it privately:
+If you find a security issue in this repository — a leaked credential, an unsafe hook, a
+workflow injection, or anything that could affect a consuming project — report it privately:
 
 - Email: <jake@wave.online>
 - Or open a GitHub Security Advisory (Security → Advisories → Report a vulnerability)
