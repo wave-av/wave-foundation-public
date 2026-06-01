@@ -1,0 +1,42 @@
+{
+  "$schema": "./queues.schema.json",
+  "version": "1.0.0",
+  "description": "Concurrency + timeout tiers for async jobs. Owned by rules/job-queue.md.",
+  "tiers": {
+    "default": {
+      "concurrency": 20,
+      "visibility_timeout_ms": 30000,
+      "p99_target_ms": 5000,
+      "max_retries": 3,
+      "use_for": ["interactive paths", "low-latency notifications", "session-bound work"]
+    },
+    "io_bound": {
+      "concurrency": 50,
+      "visibility_timeout_ms": 120000,
+      "p99_target_ms": 30000,
+      "max_retries": 5,
+      "use_for": ["external API calls", "DB-heavy reports", "fanout-light enrichment"]
+    },
+    "heavy": {
+      "concurrency": 5,
+      "visibility_timeout_ms": 600000,
+      "p99_target_ms": 300000,
+      "max_retries": 2,
+      "use_for": ["model inference", "video/audio processing", "large file conversions"],
+      "requires_sandbox": true
+    },
+    "broadcast": {
+      "concurrency": 200,
+      "visibility_timeout_ms": 60000,
+      "p99_target_ms": 10000,
+      "max_retries": 5,
+      "use_for": ["fan-out at 1k+/s", "multi-step workflows", "user-segment notifications"],
+      "idempotency_required_per_step": true
+    }
+  },
+  "dlq": {
+    "retention_days": 14,
+    "alert_on_message_age_minutes": 30,
+    "replay_requires_review": true
+  }
+}

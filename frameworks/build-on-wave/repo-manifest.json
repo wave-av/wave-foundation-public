@@ -1,0 +1,183 @@
+{
+  "$schema": "./repo-manifest.schema.json",
+  "version": "1.0.0",
+  "updated": "2026-05-31",
+  "layers": {
+    "operator": {
+      "label": "Layer 0 — Operator",
+      "description": "Desktop apps + plugins running on the operator's machine",
+      "repos": [
+        {
+          "name": "wave-desktop",
+          "url": "https://github.com/wave-av/wave-desktop",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "Electron 34",
+          "sdks": ["@wave-av/sdk"],
+          "role": "Operator console — encoders + receivers + multiview + settings",
+          "build-on-wave": true,
+          "download": "https://downloads.wave.online/desktop"
+        },
+        {
+          "name": "obs-wave-plugin",
+          "url": "https://github.com/wave-av/obs-wave-plugin",
+          "license": "GPL-2.0",
+          "language": "C",
+          "runtime": "OBS Studio 30+",
+          "sdks": [],
+          "role": "OBS Studio plugin — WAVE as a native streaming destination",
+          "build-on-wave": true,
+          "download": "https://downloads.wave.online/obs"
+        },
+        {
+          "name": "vmix-wave-integration",
+          "url": "https://github.com/wave-av/vmix-wave-integration",
+          "license": "MIT",
+          "language": "TypeScript + vMixScript + XAML",
+          "runtime": "vMix 28+ + Node 20 companion",
+          "sdks": ["@wave-av/sdk"],
+          "role": "vMix integration — Titles + Web Controller + companion sidecar",
+          "build-on-wave": true,
+          "download": "https://downloads.wave.online/vmix"
+        },
+        {
+          "name": "wave-multiviewer",
+          "url": "https://github.com/wave-av/wave-multiviewer",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "Electron 34",
+          "sdks": ["@wave-av/sdk"],
+          "role": "4×4 / 9×9 / 16×16 grid receiver with WebRTC push",
+          "build-on-wave": true,
+          "download": "https://downloads.wave.online/multiviewer"
+        },
+        {
+          "name": "wave-conferencing-bridge",
+          "url": "https://github.com/wave-av/wave-conferencing-bridge",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "Node 20",
+          "sdks": ["@wave-av/sdk"],
+          "role": "Zoom / Teams / Meet ingress + virtual cam egress types",
+          "build-on-wave": true,
+          "download": null
+        },
+        {
+          "name": "wave-monitor",
+          "url": "https://github.com/wave-av/wave-monitor",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "Electron 34",
+          "sdks": ["@wave-av/sdk"],
+          "role": "Audio + video monitor — NDI Studio Monitor analog",
+          "build-on-wave": true,
+          "download": "https://downloads.wave.online/monitor"
+        }
+      ]
+    },
+    "edge": {
+      "label": "Layer 1 — Edge",
+      "description": "Cloudflare Workers — control plane + protocol surfaces",
+      "repos": [
+        {
+          "name": "wave-gateway",
+          "url": "https://github.com/wave-av/wave-gateway",
+          "license": "proprietary",
+          "language": "TypeScript",
+          "runtime": "CF Workers",
+          "role": "auth / scope / meter / discovery + x402 settlement"
+        },
+        {
+          "name": "wave-moq-edge",
+          "url": "https://github.com/wave-av/wave-moq-edge",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "CF Workers",
+          "role": "IETF MoQ relay (draft-17)"
+        },
+        {
+          "name": "wave-realtime-edge",
+          "url": "https://github.com/wave-av/wave-realtime-edge",
+          "license": "MIT",
+          "language": "TypeScript",
+          "runtime": "CF Workers + LiveKit",
+          "role": "WebRTC SFU at the edge"
+        }
+      ]
+    },
+    "bridges": {
+      "label": "Layer 2 — Bridges",
+      "description": "Cloudflare Containers — protocol bridges (GA 2026-04-13)",
+      "repos": [
+        {
+          "name": "wave-bridge-edge",
+          "url": "https://github.com/wave-av/wave-bridge-edge",
+          "license": "MIT",
+          "language": "Go + C + Docker",
+          "runtime": "CF Containers",
+          "role": "SRT + NDI + Dante + OMT + ffmpeg + AV2 containers + per-container Go adapters"
+        },
+        {
+          "name": "wave-transports",
+          "url": "https://github.com/wave-av/wave-transports",
+          "license": "MIT (with license-gated DAL wrapper)",
+          "language": "C++17",
+          "role": "Shared transport library — AES67 fallback + DAL wrapper"
+        }
+      ]
+    },
+    "local": {
+      "label": "Layer 3 — Local Agent",
+      "description": "Per-machine daemon for LAN-local discovery + bridging",
+      "repos": [
+        {
+          "name": "wave-agent",
+          "url": "https://github.com/wave-av/wave-agent",
+          "license": "MIT",
+          "language": "Go",
+          "runtime": "macOS / Win / Linux",
+          "role": "mDNS NDI + Dante discovery + gateway bridging"
+        }
+      ]
+    },
+    "hardware": {
+      "label": "Layer 4 — Hardware",
+      "description": "Partner integrations + certification",
+      "repos": [
+        {
+          "name": "wave-certify",
+          "url": "https://github.com/wave-av/wave-certify",
+          "license": "MIT",
+          "language": "Go",
+          "role": "Protocol-correctness battery + signed cert artifact"
+        },
+        {
+          "name": "wave-hardware-designs",
+          "url": "https://github.com/wave-av/wave-hardware-designs",
+          "license": "MIT",
+          "role": "Partner design files + reference install kits"
+        }
+      ]
+    }
+  },
+  "sdks": [
+    {
+      "name": "@wave-av/sdk",
+      "language": "TypeScript",
+      "registry": "npm",
+      "latest": "2.0.14"
+    },
+    {
+      "name": "wave-av (PyPI)",
+      "language": "Python",
+      "registry": "pypi",
+      "latest": "see PyPI"
+    },
+    {
+      "name": "github.com/wave-av/sdk-go",
+      "language": "Go",
+      "registry": "go-modules",
+      "latest": "see Go proxy"
+    }
+  ]
+}

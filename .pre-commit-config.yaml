@@ -1,0 +1,140 @@
+# Local guardrails — run before every commit so bad frontmatter / YAML / shell / secrets never land.
+# Install once:  pip install pre-commit && pre-commit install
+# Run on demand: pre-commit run --all-files
+#
+# Linters are scoped to CANONICAL content. staging/ is faithful harvested reference, so the
+# STYLE/FIDELITY hooks below intentionally skip it (style-rewriting verbatim copies would corrupt
+# their reference value). SECURITY/CORRECTNESS still covers staging via CI: secret-scan (whole-repo
+# grep), skill-validate (all SKILL.md), file-size (repo-wide). Content earns full gating by being
+# promoted to a canonical root dir. Full rationale: SYSTEM.md §10. Hook revs pinned; Renovate fresh.
+exclude: '^staging/'
+
+# Install BOTH the pre-commit and commit-msg git hooks on `pre-commit install` — the conventional-title
+# guard runs at the commit-msg stage, which pre-commit otherwise wouldn't wire up.
+default_install_hook_types: [pre-commit, commit-msg]
+
+# Pin Python interpreter for python-language hooks. Workaround for the Homebrew python@3.14.5
+# bottle linking pyexpat against /usr/lib/libexpat.1.dylib — system libexpat on macOS Tahoe lacks
+# the _XML_SetAllocTrackerActivationThreshold symbol. Mitigation: install a working Python via
+# `uv python install 3.13` and pin pre-commit to it. Revert once Homebrew ships a fixed bottle.
+default_language_version:
+  python: python3.13
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-json
+        exclude: '^\.vscode/settings\.json$' # JSONC (comments) by design — VS Code reads it, stdlib json can't
+
+  # Lint GitHub Actions workflows (also runs shellcheck on run: blocks if present).
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  # Shell: lint + format the hook scripts. shellcheck-py vendors the shellcheck binary (no Docker
+  # required), so commits touching .sh work even when Docker Desktop isn't running.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning] # gate on real bugs (warning+); info/style nudges are advisory
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-1
+    hooks:
+      - id: shfmt
+        args: [-w, -i, "2", -ci]
+
+  # Secrets: shift the CI gitleaks scan left to commit time.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # Docs hygiene.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.18.1
+    hooks:
+      - id: markdownlint-cli2
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        args: [-L, "crate,nin,ba,fo,strack,ist"]
+        exclude: '\.(lock|svg)$'
+
+  - repo: local
+    hooks:
+      - id: skill-frontmatter
+        name: validate SKILL.md frontmatter
+        entry: python scripts/validate-skills.py
+        language: python # pre-commit builds an isolated venv...
+        additional_dependencies: [pyyaml] # ...so this works on any machine/agent without system pyyaml
+        pass_filenames: false
+        files: "SKILL\\.md$"
+
+      - id: no-zero-byte-canonical
+        name: reject 0-byte canonical files (rules/agent-write-discipline.md)
+        entry: scripts/check-no-zero-byte.sh
+        language: script
+        pass_filenames: true
+        exclude: '^(staging/|\.gitkeep$|\.gitignore$)'
+
+      # Version-sync — same check as self-check.yml's version-sync job, run locally so a plugin.json /
+      # marketplace.json version mismatch is caught at commit time (the release flow bumps both; a hand
+      # edit to one drifts them). Foundation-internal (a spoke has no plugin manifest) → declared here,
+      # NOT in the registry-generated block that spokes inherit. Pure stdlib.
+      - id: version-sync
+        name: plugin/marketplace version-sync (mirrors self-check.yml)
+        entry: scripts/check-version-sync.py
+        language: script
+        pass_filenames: false
+        files: '^(plugin/\.claude-plugin/plugin\.json|\.claude-plugin/marketplace\.json)$'
+
+      # Conventional-title guard — same rule as .github/workflows/semantic-pr.yml, run at commit-msg
+      # time so a bad subject is blocked BEFORE the commit lands (and thus before the PR title is
+      # derived from it). One source of truth: frameworks/hooks/validate-conventional-title.sh.
+      # commit-msg stage needs `default_install_hook_types` (top of file) so `pre-commit install`
+      # actually wires the .git/hooks/commit-msg hook.
+      - id: conventional-title
+        name: conventional commit title (mirrors semantic-pr.yml)
+        entry: frameworks/hooks/validate-conventional-title.sh
+        language: script
+        stages: [commit-msg]
+        always_run: true
+        pass_filenames: true
+
+      # Claude-API request-shape gate — same script the reusable checks.yml runs in every spoke, here
+      # at commit time so a forbidden shape (temperature on Opus, date-suffixed model, budget_tokens on
+      # Opus 4.7/4.8, effort on Haiku, output_format) never lands. Spokes point this at the vendored
+      # copy: .foundation/frameworks/claude-api/lint-request-shape.sh.
+      - id: claude-api-shape
+        name: Claude-API request-shape (mirrors model-matrix.md)
+        entry: frameworks/claude-api/lint-request-shape.sh
+        language: script
+        files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh)$'
+        exclude: '^staging/'
+
+      # The hooks below are declared in frameworks/gates/registry.yaml — emit.py --check (run in
+      # self-check.yml) fails if these drift from the registry. Add a gate there, not just here.
+      - id: file-size
+        name: file-size gate (code <= 800 lines)
+        entry: frameworks/gates/scripts/check-file-size.sh
+        language: script
+        files: '\.(ts|tsx|js|py)$'
+        exclude: '\.(types|d)\.ts$'
+        pass_filenames: true
+
+      - id: model-string
+        name: model-string lint (no date-suffixed / unknown Claude model IDs)
+        entry: frameworks/gates/scripts/check-model-strings.sh
+        language: script
+        files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh|json|ya?ml)$'
+        exclude: '^staging/'
+        pass_filenames: true

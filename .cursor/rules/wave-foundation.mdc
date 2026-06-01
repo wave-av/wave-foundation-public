@@ -1,0 +1,13 @@
+---
+description: wave-foundation conventions and validation gates
+alwaysApply: true
+---
+
+Read **`AGENTS.md`** (and `CLAUDE.md`) for full guidance. Key rules:
+
+- Validation gates run on every commit and PR (pre-commit + `.github/workflows/self-check.yml`):
+  secret-scan, file-size, and `SKILL.md` frontmatter via `scripts/validate-skills.py`.
+- `staging/` is un-vetted harvest — don't treat it as canonical; the foundation is `plugin/`,
+  `rules/`, `frameworks/`, `design-system/`, `scripts/`.
+- "Consumed, not copied": extract the cross-project, product-agnostic subset; genericize before it lands.
+- No hardcoded user paths (`$HOME`/`~`), no secrets in tracked files, Supabase staging-first.

@@ -1,0 +1,290 @@
+name: Bot Review Gate
+
+# Lightweight API-only check that classifies bot findings and sets a commit status.
+# No checkout needed — runs in <30s using only GitHub API calls. Recognizes CodeRabbit,
+# Cursor, Greptile, Cubic, Sentry, GitHub Advanced Security, etc. Harvested from
+# wave-surfer-connect and genericized. Register as a NON-required check first; after
+# validating, add "Bot Review Gate" to branch protection.
+#
+# AUTO-RESOLVE: before tallying, the gate resolves OUTDATED bot review threads (the flagged code
+# changed in a later commit → addressed), so fixed findings clear without a human. Bots re-review
+# each push and re-raise anything still broken. Conservative + fail-safe — see
+# rules/bot-review-auto-resolve.md. (Needs pull-requests: write.)
+# Action refs use tags; Renovate (pinDigests) pins them to SHA.
+
+on:
+  workflow_call: {} # consumers call this as a reusable workflow (uses: …/bot-review-gate.yml@v1).
+  # The job's `if:` keys off github.event_name (the caller's triggering event in a called workflow);
+  # createCommitStatus targets context.repo — so status + auto-resolve land on the CALLER's PR.
+  #
+  # CALLER CONTRACT (fail-open guard): a caller MUST trigger ONLY on PR events
+  #   [pull_request, pull_request_review, pull_request_review_comment, issue_comment].
+  # If wired to a non-PR event (push/schedule/etc.) the job's `if:` skips, and a SKIPPED required
+  # check reports as SUCCESS — silently disabling the gate (fail-open). Within the job the path is
+  # already fail-closed (an unresolvable PR throws → red). Do NOT add this as a required check on a
+  # caller whose triggers include non-PR events. See rules/bot-review-auto-resolve.md.
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read # least privilege at the workflow level; the job escalates only what it needs
+
+jobs:
+  bot-review-gate:
+    name: Bot Review Gate
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # read bot review comments + auto-resolve addressed (outdated) bot threads
+      statuses: write # publish the aggregated "Bot Review Gate" commit status
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'pull_request_review' ||
+      github.event_name == 'pull_request_review_comment' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
+    timeout-minutes: 2
+    steps:
+      - name: Classify Bot Findings
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            let prNumber, headSha;
+            if (context.eventName === 'pull_request' ||
+                context.eventName === 'pull_request_review' ||
+                context.eventName === 'pull_request_review_comment') {
+              prNumber = context.payload.pull_request.number;
+              headSha = context.payload.pull_request.head.sha;
+            } else {
+              prNumber = context.payload.issue.number;
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber,
+              });
+              headSha = pr.head.sha;
+            }
+            console.log(`Checking PR #${prNumber} (SHA: ${headSha})`);
+
+            // Known review-bot logins. Edit to match the bots installed on this repo.
+            const botLogins = [
+              // Original AI + security set
+              'coderabbitai[bot]', 'corridor-security[bot]', 'cubic-dev-ai[bot]',
+              'cursor[bot]', 'github-advanced-security[bot]', 'github-actions[bot]',
+              'bugbot-io[bot]', 'sentry-io[bot]', 'greptile-apps[bot]', 'meticulous-ai[bot]',
+              'socket-security[bot]',
+              // PR D additions — AI reviewers
+              'copilot-pull-request-reviewer[bot]', 'gemini-code-assist[bot]',
+              // PR D — security / SAST / secrets
+              'gitguardian[bot]', 'snyk-bot', 'semgrep-app[bot]',
+              // PR D — quality / static analysis
+              'deepsourcebot', 'sonarcloud[bot]', 'sonarqubecloud[bot]', 'trunk-io[bot]',
+            ];
+            // STRUCTURED severity markers only. Bare English words (HIGH, major, serious, critical,
+            // blocker, "error handling") were removed: they match descriptive prose and bot
+            // boilerplate (e.g. CodeRabbit's rate-limit notice says "high-volume PR review
+            // activity" → matched /\bHIGH\b/ → phantom "1 major"). Real findings carry an emoji
+            // severity, a P0/P1 label, a CWE id, or a named vulnerability class.
+            const criticalPatterns = [
+              /🔴/, /\bP0\b/,
+              /\bSQL injection\b/i, /\bXSS\b/i, /\bRCE\b/i, /\bSSRF\b/i,
+              /CWE-89/i, /CWE-79/i, /CWE-287/i, /CWE-798/i,
+            ];
+            const majorPatterns = [
+              /🟠/, /\bP1\b/, /\bN\+1 query\b/i, /\bmissing auth\b/i,
+            ];
+            // CodeRabbit's auto-generated summary / walkthrough / rate-limit notices are status
+            // comments, not findings — never classify them.
+            const isAutoGenerated = (body) =>
+              /auto-generated comment:.*by coderabbit\.ai/i.test(body || '');
+            function getBotSource(login) {
+              if (login.includes('coderabbit')) return 'CodeRabbit';
+              if (login.includes('corridor')) return 'Corridor';
+              if (login.includes('cubic')) return 'Cubic';
+              if (login.includes('copilot-pull-request')) return 'Copilot Reviewer';
+              if (login.includes('cursor')) return 'Cursor';
+              if (login.includes('github-advanced-security')) return 'GitHub Security';
+              if (login.includes('github-actions')) return 'GitHub Actions';
+              if (login.includes('bugbot')) return 'Bugbot';
+              if (login.includes('sentry')) return 'Sentry';
+              if (login.includes('greptile')) return 'Greptile';
+              if (login.includes('meticulous')) return 'Meticulous';
+              if (login.includes('socket-security')) return 'Socket Security';
+              if (login.includes('gemini-code-assist')) return 'Gemini Code Assist';
+              if (login.includes('gitguardian')) return 'GitGuardian';
+              if (login.includes('snyk')) return 'Snyk';
+              if (login.includes('semgrep')) return 'Semgrep';
+              if (login.includes('deepsource')) return 'DeepSource';
+              if (login.includes('sonarqubecloud')) return 'SonarQube Cloud';
+              if (login.includes('sonarcloud')) return 'SonarCloud';
+              if (login.includes('trunk-io')) return 'Trunk Check';
+              return login;
+            }
+            function classifySeverity(body) {
+              // Drop lines where severity words are labels/headers, not findings.
+              const stripped = body.split('\n').filter(line => {
+                const t = line.trim();
+                if (t.startsWith('|') || t.startsWith('---')) return false;
+                if (/^#{1,6}\s+(Critical|Major|Minor|High|Medium|Low)(?:\s+Issues?)?\s*$/i.test(t)) return false;
+                if (/^(\*{1,2})?(Critical|Major|High)\1?\s*[:|-]\s*0\b/i.test(t)) return false;
+                if (/<summary>.*<\/summary>/i.test(t)) return false;
+                if (/^!\[/i.test(t)) return false;
+                return true;
+              }).join('\n');
+              for (const p of criticalPatterns) if (p.test(stripped)) return 'critical';
+              for (const p of majorPatterns) if (p.test(stripped)) return 'major';
+              return 'minor';
+            }
+
+            let criticalCount = 0, majorCount = 0;
+            const criticalSources = new Map(), majorSources = new Map();
+
+            // Skip comments in RESOLVED review threads (GraphQL — REST can't see resolution).
+            //
+            // AUTO-RESOLVE addressed findings (no human needed). A bot thread is "addressed" when it
+            // is OUTDATED — the code at the finding's location changed in a later commit. Bots re-review
+            // every push, so if the fix is wrong they post a FRESH (non-outdated) comment that this gate
+            // still catches; only the stale, superseded thread is cleared. This is the conservative,
+            // non-gaming signal: "the flagged code changed", verified by the bot's own re-review.
+            const resolvedCommentIds = new Set();
+            const toResolve = []; // {threadId, login, commentIds[]} outdated, unresolved, bot-authored
+            try {
+              let hasNextPage = true, cursor = null;
+              for (let i = 0; i < 5 && hasNextPage; i++) {
+                const query = `query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $pr) {
+                      reviewThreads(first: 100, after: $cursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { id isResolved isOutdated comments(first: 100) { nodes { id author { login __typename } } } }
+                      }
+                    }
+                  }
+                }`;
+                const result = await github.graphql(query, {
+                  owner: context.repo.owner, repo: context.repo.repo, pr: prNumber, cursor,
+                });
+                const threads = result.repository.pullRequest.reviewThreads;
+                for (const thread of threads.nodes) {
+                  const a0 = thread.comments.nodes[0]?.author;
+                  // GraphQL author.login drops the "[bot]" suffix (and differs from the REST login,
+                  // e.g. "sentry" vs "sentry[bot]"), so match the Actor TYPE, not a login string:
+                  // GitHub Apps are __typename "Bot"; humans are "User". List-free and robust.
+                  const isBot = a0?.__typename === 'Bot';
+                  if (thread.isResolved) {
+                    for (const c of thread.comments.nodes) resolvedCommentIds.add(c.id);
+                  } else if (thread.isOutdated && isBot) {
+                    // addressed → queue for auto-resolve. Do NOT mark resolved yet: only exclude from
+                    // the tally AFTER the mutation actually succeeds (fail-safe — a failed resolve must
+                    // still be counted, never fail-open).
+                    toResolve.push({ threadId: thread.id, login: a0?.login || 'bot', commentIds: thread.comments.nodes.map(c => c.id) });
+                  }
+                }
+                hasNextPage = threads.pageInfo.hasNextPage;
+                cursor = threads.pageInfo.endCursor;
+              }
+            } catch (e) {
+              console.log(`GraphQL thread query failed (${e.message}); counting all comments`);
+            }
+
+            // Resolve the addressed (outdated) bot threads. Best-effort and FAIL-SAFE: a thread's
+            // comments are excluded from the tally ONLY after its resolve mutation succeeds — a failed
+            // resolve leaves the finding counted (never fail-open). Only ever resolves bot-authored,
+            // outdated, currently-unresolved threads — never a human's open conversation.
+            let resolvedCount = 0;
+            for (const t of toResolve) {
+              try {
+                await github.graphql(
+                  `mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }`,
+                  { id: t.threadId });
+                for (const id of t.commentIds) resolvedCommentIds.add(id); // exclude from tally only on success
+                resolvedCount++;
+                console.log(`Auto-resolved outdated ${getBotSource(t.login)} thread (${t.commentIds.length} comment(s))`);
+              } catch (e) {
+                console.log(`Could not auto-resolve a ${t.login} thread (${e.message}); it will still be counted`);
+              }
+            }
+            if (toResolve.length) console.log(`Auto-resolved ${resolvedCount}/${toResolve.length} addressed bot thread(s)`);
+
+            function tally(login, body, nodeId) {
+              if (!botLogins.includes(login)) return;
+              if (nodeId && resolvedCommentIds.has(nodeId)) return;
+              if (isAutoGenerated(body)) return; // status/summary boilerplate, not a finding
+              const severity = classifySeverity(body || '');
+              const source = getBotSource(login);
+              if (severity === 'critical') { criticalCount++; criticalSources.set(source, (criticalSources.get(source) || 0) + 1); }
+              else if (severity === 'major') { majorCount++; majorSources.set(source, (majorSources.get(source) || 0) + 1); }
+            }
+
+            for (let page = 1; page <= 3; page++) {
+              const { data: comments } = await github.rest.pulls.listReviewComments({
+                owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100, page,
+              });
+              if (comments.length === 0) break;
+              for (const c of comments) tally(c.user?.login || '', c.body, c.node_id);
+              if (comments.length < 100) break;
+            }
+            for (let page = 1; page <= 2; page++) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100, page,
+              });
+              if (comments.length === 0) break;
+              for (const c of comments) tally(c.user?.login || '', c.body, null);
+              if (comments.length < 100) break;
+            }
+
+            const hasBlocking = criticalCount > 0 || majorCount > 0;
+            let description;
+            if (hasBlocking) {
+              const parts = [];
+              if (criticalCount > 0) parts.push(`${criticalCount} critical (${[...criticalSources.keys()].join(', ')})`);
+              if (majorCount > 0) parts.push(`${majorCount} major (${[...majorSources.keys()].join(', ')})`);
+              description = parts.join(', ');
+            } else {
+              description = 'No blocking bot findings';
+            }
+            if (description.length > 140) description = description.substring(0, 137) + '...';
+            console.log(`Result: ${hasBlocking ? 'FAILURE' : 'SUCCESS'} - ${description}`);
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner, repo: context.repo.repo, sha: headSha,
+              state: hasBlocking ? 'failure' : 'success', description, context: 'Bot Review Gate',
+            });
+
+            // Sticky comment: a single, in-place-updated summary so a reviewer sees the bot
+            // verdict without opening the Checks tab. Keyed by a hidden marker so each run
+            // edits the same comment instead of stacking new ones. Best-effort — a failure to
+            // post must never change the gate result (already set above).
+            const MARKER = '<!-- bot-review-gate-sticky -->';
+            const icon = hasBlocking ? '🔴' : '🟢';
+            const verdict = hasBlocking ? 'blocking findings' : 'clear';
+            const body = [
+              MARKER,
+              `### ${icon} Bot Review Gate — ${verdict}`,
+              '',
+              hasBlocking
+                ? `Resolve before merge: **${description}**.`
+                : "No critical or major bot findings. (Minor findings, if any, don't block.)",
+              '',
+              '<sub>Auto-resolves outdated bot threads on each push; re-runs on every review event. '
+                + 'See `rules/bot-review-auto-resolve.md`.</sub>',
+            ].join('\n');
+            try {
+              const existing = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+              });
+              const mine = existing.find(c => (c.body || '').includes(MARKER));
+              if (mine) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner, repo: context.repo.repo, comment_id: mine.id, body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body,
+                });
+              }
+            } catch (e) {
+              console.log(`sticky comment skipped (non-fatal): ${e.message}`);
+            }

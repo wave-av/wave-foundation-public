@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wave-foundation/frameworks/model-routing/profiles.schema.json",
+  "title": "Local-Offload Chassis profiles file",
+  "description": "Declarative named-profile router config. A profiles file binds named profiles (Fast/Expert/Heavy/Code + custom) to endpoints (local or hosted) with an ordered fallback chain. Extracted from wave-av/wave-dispatch.",
+  "type": "object",
+  "required": ["endpoints", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "endpoints": {
+      "type": "object",
+      "description": "Named endpoints a profile can target. Keys are referenced by profile.endpoint.",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/endpoint" }
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Named profiles. Keys are referenced by callers and by profile.fallback entries.",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/profile" }
+    }
+  },
+  "definitions": {
+    "endpoint": {
+      "type": "object",
+      "required": ["base_url", "api_style"],
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "description": "Endpoint root, e.g. http://127.0.0.1:11434 (local) or https://api.anthropic.com (hosted). NEVER hardcode internal WAVE hosts/IPs here — override via env in the spoke."
+        },
+        "api_style": {
+          "enum": ["anthropic", "openai", "ollama"],
+          "description": "Wire format the endpoint speaks."
+        },
+        "model": {
+          "type": "string",
+          "description": "Default model tag/id for this endpoint."
+        },
+        "api_key_env": {
+          "type": ["string", "null"],
+          "description": "Name of the env var holding the bearer key (hosted endpoints). null/omitted for keyless local endpoints. The key VALUE is never stored in config."
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["endpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Sampling temperature. HARVEST temp map: Fast 0.2-0.3, Expert 0.45-0.6, Heavy 0.5-1.0, Code 0.15-0.3."
+        },
+        "max_tokens": { "type": "integer", "minimum": 1 },
+        "timeout_s": { "type": "number", "exclusiveMinimum": 0 },
+        "endpoint": {
+          "type": "string",
+          "description": "Name of an entry in the top-level `endpoints` map."
+        },
+        "fallback": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered profile names tried on STRUCTURED failure (timeout / connection error / 5xx / is_bad). Walked deduped + cycle-guarded, terminating at a hosted frontier backstop. Empty for a terminal profile."
+        }
+      }
+    }
+  }
+}

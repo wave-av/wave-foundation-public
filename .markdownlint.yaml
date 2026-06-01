@@ -1,0 +1,10 @@
+# markdownlint rules for the docs/skills corpus. Prose-friendly defaults.
+default: true
+MD013: false # line-length — irrelevant for prose/tables
+MD033: false # inline HTML — skills use <details>, <summary>, etc.
+MD041: false # first line need not be a heading (frontmatter precedes content)
+MD024:
+  siblings_only: true # duplicate headings OK if not siblings
+MD025: false # multiple H1 allowed (some skills use multiple top sections)
+MD040: false # fenced blocks need not name a language (protocol docs have many structural blocks)
+MD036: false # bold lines used as pseudo-headings in protocol/skill docs

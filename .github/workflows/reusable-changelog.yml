@@ -1,0 +1,43 @@
+name: Reusable Changelog
+
+# workflow_call version of release.yml's changelog step so consuming repos inherit one changelog pipeline
+# (burnrate can retire its bash categorizer; router-dispatch its hand-maintained CHANGELOG).
+# Call on a v* tag:
+#   jobs: { changelog: { uses: wave-av/wave-foundation/.github/workflows/reusable-changelog.yml@master } }
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: "git-cliff config path"
+        required: false
+        type: string
+        default: "cliff.toml"
+
+permissions:
+  contents: write
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate CHANGELOG
+        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        with:
+          config: ${{ inputs.config }}
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+      - name: Publish release notes
+        # zizmor: ignore[superfluous-actions] action-gh-release is the intentional, maintained
+        # choice for release creation (SHA-pinned); replacing with raw gh CLI adds no value here.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          body_path: CHANGELOG.md

@@ -1,0 +1,10 @@
+{
+  "name": "tech-debt-remediation",
+  "title": "Tech Debt Remediation — Pre-Public Launch",
+  "created": "2026-03-26",
+  "phases": 5,
+  "current_phase": 1,
+  "velocity": { "items_completed": 0, "items_remaining": 28 },
+  "tags": ["tech-debt", "quality", "ci", "validators", "public-launch"],
+  "execution": "teams-based"
+}

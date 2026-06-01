@@ -1,0 +1,86 @@
+# Gate registry — the ONE place every left-shift gate is declared.
+#
+# A "gate" is a rule that runs both locally (git-stage hook) and in CI, off ONE shared script, so a
+# failure is caught AS code is written, not after a push/PR. Instead of hand-editing
+# .pre-commit-config.yaml AND checks.yml AND the scaffolder template (three places that drift), each
+# gate is declared here once and `emit.py` generates the rest. `emit.py --check` runs in CI and fails
+# if the live configs don't match this registry — so this file is provably the source of truth.
+#
+# Fields per gate:
+#   id          pre-commit hook id (stable; also the display handle)
+#   name        human-facing hook name
+#   script      canonical path in wave-foundation (what foundation's own hooks/CI run)
+#   vendored    path in a consuming spoke (under .foundation/, vendored read-only by consume.sh)
+#   stage       commit-msg | pre-commit | pre-push   (git-stage the local hook binds to)
+#   files       pre-commit `files:` regex (omit/empty → all files)        [optional]
+#   exclude     pre-commit `exclude:` regex                                [optional]
+#   pass_filenames  true|false (default true)
+#   always_run  true|false (default false)
+#   ci_job      job name in the reusable checks.yml / self-check.yml (informational)
+#   spoke_advisory  true → continue-on-error in the inherited spoke gate during rollout
+#
+# Add a gate: append an entry + a one-line script under frameworks/, run `emit.py --write` to
+# regenerate, commit. The CI drift-check keeps everyone honest.
+
+gates:
+  - id: conventional-title
+    name: conventional commit title (mirrors semantic-pr.yml)
+    script: frameworks/hooks/validate-conventional-title.sh
+    vendored: .foundation/frameworks/hooks/validate-conventional-title.sh
+    stage: commit-msg
+    pass_filenames: true
+    always_run: true
+    ci_job: semantic-pr (parity step)
+    spoke_advisory: true
+
+  - id: claude-api-shape
+    name: Claude-API request-shape (mirrors model-matrix.md)
+    script: frameworks/claude-api/lint-request-shape.sh
+    vendored: .foundation/frameworks/claude-api/lint-request-shape.sh
+    stage: pre-commit
+    files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh)$'
+    exclude: '^staging/'
+    pass_filenames: true
+    ci_job: claude-api-shape
+    spoke_advisory: true
+
+  - id: file-size
+    name: file-size gate (code <= 800 lines)
+    script: frameworks/gates/scripts/check-file-size.sh
+    vendored: .foundation/frameworks/gates/scripts/check-file-size.sh
+    stage: pre-commit
+    files: '\.(ts|tsx|js|py)$'
+    exclude: '\.(types|d)\.ts$'
+    pass_filenames: true
+    ci_job: file-size
+    spoke_advisory: false
+
+  - id: model-string
+    name: model-string lint (no date-suffixed / unknown Claude model IDs)
+    script: frameworks/gates/scripts/check-model-strings.sh
+    vendored: .foundation/frameworks/gates/scripts/check-model-strings.sh
+    stage: pre-commit
+    files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh|json|ya?ml)$'
+    exclude: '^staging/'
+    pass_filenames: true
+    ci_job: claude-api-shape
+    spoke_advisory: true
+
+# Coverage of the 9 required CI checks (task #30), by mirror class:
+#   PORTABLE gates (above — registry-emitted, inherited by every spoke):
+#     file-size ✓, claude-api-shape ✓, model-string ✓, conventional-title ✓ (semantic-pr parity)
+#   FOUNDATION-LOCAL hooks (in .pre-commit-config.yaml, NOT registry — a spoke lacks these artifacts):
+#     skill-validate ✓ (skill-frontmatter hook), version-sync ✓ (version-sync hook),
+#     secret-scan ✓ (gitleaks hook)
+#   CI-ONLY by design (need a tool + a CI baseline that has no honest local equivalent):
+#     pinact         — pins Actions to SHAs; needs the `pinact` binary + network, runs in CI/Renovate.
+#     shell ratchet  — shellcheck COUNT must not increase vs the committed baseline; the baseline is a
+#                      CI artifact (a local delta is meaningless without it). shellcheck itself already
+#                      runs as a pre-commit hook above, which is the real left-shift; the ratchet is the
+#                      CI backstop.
+#     python ratchet — same shape for ruff. ruff/format left-shift is the editor + CI; ratchet is CI.
+#
+# TODO (registry-ready, not yet emitted): native pre-push gates that don't fit pre-commit's model
+# cleanly (installed via scripts/install-git-hooks.sh instead):
+#   - branch-ref-safety  (block force-push / stale push to master|main) — see scaffolder/templates/hooks/pre-push
+#   - prod-token-guard   (extend gitleaks for WAVE prod token shapes)

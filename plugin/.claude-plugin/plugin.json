@@ -1,0 +1,21 @@
+{
+  "name": "wave-foundation",
+  "description": "WAVE cross-project foundation: 5 plan skills (plan-generate/enhance/to-action/audit, wave-execute) + 8 guard hooks (supabase-prod-guard, file-size-warning, circuit-breaker, post-write-validator, session-start, skill-frontmatter-guard, git-safety-guard, git-commit-anchor).",
+  "version": "1.7.0",
+  "author": {
+    "name": "Jake Fineman",
+    "email": "jake@wave.online"
+  },
+  "homepage": "https://github.com/wave-av/wave-foundation",
+  "repository": "https://github.com/wave-av/wave-foundation",
+  "license": "UNLICENSED",
+  "keywords": [
+    "wave",
+    "plan",
+    "skills",
+    "hooks",
+    "supabase",
+    "guard",
+    "foundation"
+  ]
+}

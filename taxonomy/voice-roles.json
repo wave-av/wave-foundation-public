@@ -1,0 +1,66 @@
+{
+  "$schema": "./voice-roles.schema.json",
+  "version": "1.0.0",
+  "description": "Canonical voice-role taxonomy. Each role maps to a configured ElevenLabs voice ID via ELEVENLABS_<ROLE>_VOICE_ID env var. Voice IDs themselves are NEVER committed (per-app config). Owned by frameworks/realtime-media + rules/sentry-instrumentation for PII redaction.",
+  "roles": {
+    "host": {
+      "purpose": "Primary in-product narrator. Live event MC, default agent voice.",
+      "env_var": "ELEVENLABS_HOST_VOICE_ID",
+      "fallback": "creator",
+      "characteristics": ["warm", "mid-energy", "neutral accent"],
+      "use_for": ["live event intros", "default agent dialogue", "guided tours"]
+    },
+    "coach": {
+      "purpose": "Instructional + supportive. Slower pace, encouraging.",
+      "env_var": "ELEVENLABS_COACH_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["calm", "low-energy", "patient"],
+      "use_for": ["onboarding", "tutorials", "skill-building moments"]
+    },
+    "moderator": {
+      "purpose": "Authoritative neutral. Conflict resolution, ground rules, time calls.",
+      "env_var": "ELEVENLABS_MODERATOR_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["clear", "neutral-energy", "even cadence"],
+      "use_for": ["room moderation", "rule announcements", "interventions"]
+    },
+    "creator": {
+      "purpose": "High-energy promotional. Trailer voice, hype reels.",
+      "env_var": "ELEVENLABS_CREATOR_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["high-energy", "dynamic", "expressive"],
+      "use_for": ["trailers", "promo clips", "celebratory moments"]
+    },
+    "support": {
+      "purpose": "Empathetic help-desk voice. Error explanations, escalation moments.",
+      "env_var": "ELEVENLABS_SUPPORT_VOICE_ID",
+      "fallback": "coach",
+      "characteristics": ["warm", "apologetic-capable", "patient"],
+      "use_for": ["error states", "help responses", "incident communications to users"]
+    },
+    "analytics": {
+      "purpose": "Reporting voice. Data narration, dashboards.",
+      "env_var": "ELEVENLABS_ANALYTICS_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["measured", "precise", "low-affect"],
+      "use_for": ["weekly summary playback", "metric explanations", "audit walkthroughs"]
+    },
+    "accessibility": {
+      "purpose": "Screen-reader optimized. High-clarity, consistent pace.",
+      "env_var": "ELEVENLABS_ACCESSIBILITY_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["maximum clarity", "consistent pace", "no inflection drama"],
+      "use_for": ["a11y-mode playback", "TTS for users with screen readers"]
+    },
+    "translation": {
+      "purpose": "Multilingual narration. Cross-locale voice matching.",
+      "env_var": "ELEVENLABS_TRANSLATION_VOICE_ID",
+      "fallback": "host",
+      "characteristics": ["locale-neutral", "high pronunciation accuracy"],
+      "use_for": ["translated content playback", "multilingual broadcasts"],
+      "locale_aware": true
+    }
+  },
+  "fallback_chain_max_depth": 2,
+  "if_no_env_var_set": "use ElevenLabs default voice (Rachel) and emit a Sentry warning with role+app context"
+}

@@ -1,0 +1,113 @@
+name: ratchet (lint-debt)
+
+# Changed-files ratchet: fail only on NEW lint findings in PR-touched files; existing debt is
+# grandfathered in the committed baselines (.shellcheck-baseline.txt, .python-baseline.txt,
+# .cppcheck-baseline.txt, .clippy-baseline.txt).
+# shell + python are BLOCKING — observed clean across 5 consecutive PRs (#43-#48), 0 false-positives.
+# Flipped from warn-only on 2026-05-28. Failure on a NEW finding in changed files blocks the PR.
+# cpp + rust are PRESENT-BUT-DORMANT: this repo has zero native files, so the gate is a clean no-op
+# (skips when no C/C++/Rust changed) — NOT a faked green. They activate the moment wave-transports
+# lands native code; observe them clean for 5 PRs there before adding to required checks (same
+# rollout the shell/python ratchets followed). Rationale: docs/ratchet.md "Native (C/C++/Rust)".
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ratchet-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: shell ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # pip installs shellcheck-py from PyPI
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0 # need history for the merge-base diff
+          persist-credentials: false
+      - name: Install shellcheck-py (pinned to match local pre-commit + baseline)
+        # ubuntu-latest's preinstalled shellcheck is a different version and emits different
+        # SC#### message text, which breaks signature parity with the committed baseline. Pin to
+        # the exact pre-commit hook version (.pre-commit-config.yaml shellcheck-py rev) so the
+        # baseline generated locally matches signatures generated in CI.
+        run: pip install --user shellcheck-py==0.11.0.1
+      - name: Shell ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          bash scripts/shell-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+
+  python:
+    name: python ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # uvx fetches the pinned ruff from PyPI
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Python ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/python-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+
+  cpp:
+    name: cpp ratchet
+    # DORMANT until native code lands (see header). cppcheck does whole-file analysis with no compile
+    # database, so the gate works the instant the first C/C++ file appears; clang-tidy (needs
+    # compile_commands.json from a real build) is the deeper scheduled oracle — TODO in docs/ratchet.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # apt fetches cppcheck
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install cppcheck (pinned via apt for signature stability)
+        # ubuntu-latest ships a recent cppcheck; pin the package so message text — and thus baseline
+        # signature parity — stays stable across runner image bumps.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+      - name: Cpp ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/cpp-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+
+  rust:
+    name: rust ratchet
+    # DORMANT until a Cargo crate lands (see header). clippy must compile the crate, so it runs per
+    # Cargo workspace; with no Cargo.toml the script is a clean no-op over zero changed *.rs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # rustup component add clippy
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Ensure clippy is available (ubuntu-latest preinstalls rustup)
+        run: rustup component add clippy
+      - name: Rust ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
