@@ -1,0 +1,10 @@
+# WAVE copywriting gate — lefthook integration (merge into a repo's lefthook.yml).
+# Runs the copy gate on staged user-facing files at commit time. Fails the commit on ERROR-severity.
+pre-commit:
+  parallel: true
+  commands:
+    copywriting:
+      # Only run when user-facing surfaces are staged.
+      glob: "*.{tsx,ts,md,mdx}"
+      run: bash frameworks/copywriting/copy-checker.sh --staged
+      # Non-inclusive terms / "click here" / salesy / vague errors block; buzzwords warn.

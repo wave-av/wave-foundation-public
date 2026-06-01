@@ -1,0 +1,4 @@
+source: https://platform.claude.com/docs (en) via .md scrape
+index:  https://platform.claude.com/llms.txt (1543 pages enumerated)
+scraped_utc: 2026-05-30
+note: pinned read-only snapshot. Do NOT hand-edit. Refresh with refresh-docs.sh.

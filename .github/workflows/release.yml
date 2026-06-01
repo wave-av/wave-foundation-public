@@ -1,0 +1,131 @@
+name: Release
+
+# On a v* tag: publish the GitHub release (git-cliff notes) and attach a CycloneDX SBOM.
+# Both jobs run on the same tag-push event (a real push event reliably triggers workflows) — the
+# SBOM is a `needs: release` job rather than a separate `release: published` workflow, because a
+# release created by GITHUB_TOKEN does NOT trigger `release` events (so a split workflow never fires
+# its SBOM). Pairs with semantic-pr.yml + scripts/release.sh. Action refs use tags; Renovate/pinact
+# SHA-pin.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # The "v*" trigger catches BOTH full release tags (v1.7.0) and the moving major tag (v1). Route them:
+  # a full vX.Y.Z tag publishes a release; a bare vN tag is a fleet-wide pointer move and must instead
+  # pass the major-tag safety backstop (it must NOT create a GitHub release named "v1").
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      kind: ${{ steps.k.outputs.kind }}
+    steps:
+      - id: k
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then kind=release
+          elif [[ "$TAG" =~ ^v[0-9]+$ ]]; then kind=major
+          else kind=other; fi
+          echo "tag=$TAG kind=$kind"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+  major-tag-safety:
+    # Backstop for the moving major tag (v1, v2, …). The PREVENTIVE control is scripts/advance-major-tag.sh
+    # (run by the operator/agent before pushing); this detective check fails loudly if a bare `git push -f`
+    # ever bypassed it. Verifies the moving tag points at the NEWEST full release for its major AND that the
+    # gate framework self-tests pass at that tree — so a stale/buggy gate can't be silently activated fleet-wide.
+    needs: classify
+    if: needs.classify.outputs.kind == 'major'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Major tag points at the newest release + gate self-tests pass
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --quiet --tags --force origin
+          newest="$(git tag -l "${TAG}.*.*" --sort=-v:refname | grep -E "^${TAG}\.[0-9]+\.[0-9]+$" | head -1 || true)"
+          [ -n "$newest" ] || { echo "::error::no full ${TAG}.Y.Z release tag exists — a moving ${TAG} should never lead a real release"; exit 1; }
+          if [ "$(git rev-parse "${TAG}^{commit}")" != "$(git rev-parse "${newest}^{commit}")" ]; then
+            echo "::error::${TAG} points at $(git rev-parse --short "${TAG}^{commit}") but the newest release ${newest} is $(git rev-parse --short "${newest}^{commit}") — advance ${TAG} with scripts/advance-major-tag.sh, never a bare 'git push -f'."
+            exit 1
+          fi
+          echo "${TAG} correctly tracks ${newest}; running gate self-tests at that tree"
+          python3 frameworks/gates/emit.py --check
+          LINT=frameworks/claude-api/lint-request-shape.sh
+          if [ -f "$LINT" ]; then
+            printf 'client.messages.create(model="claude-opus-4-8", temperature=0.7, max_tokens=10)\n' > /tmp/bad.py
+            printf 'client.messages.create(model="claude-opus-4-8", thinking={"type":"adaptive"}, max_tokens=10)\n' > /tmp/good.py
+            if bash "$LINT" /tmp/bad.py >/dev/null 2>&1; then echo "::error::request-shape gate at ${newest} fails to flag a known-bad shape — refusing to bless ${TAG}"; exit 1; fi
+            bash "$LINT" /tmp/good.py >/dev/null 2>&1 || { echo "::error::request-shape gate at ${newest} false-positives on a known-good shape — refusing to bless ${TAG}"; exit 1; }
+          fi
+          echo "✓ ${TAG} is safe to be live fleet-wide"
+
+  release:
+    needs: classify
+    if: needs.classify.outputs.kind == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the committed CHANGELOG covers this tag
+        # The release is cut by scripts/release.sh, which commits the CHANGELOG.md entry BEFORE the
+        # tag. This guards manual tags: fail loudly if the committed changelog has no section for the
+        # released version (rather than silently shipping a release with no recorded changes).
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ver="${TAG#v}"
+          if ! grep -qE "^## \[${ver}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${ver}]' section for ${TAG}. Cut releases with scripts/release.sh (it commits the changelog before tagging)."
+            exit 1
+          fi
+          echo "CHANGELOG.md contains the [${ver}] section"
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+      - name: Publish release
+        # zizmor: ignore[superfluous-actions] action-gh-release is the intentional, maintained
+        # choice for release creation (SHA-pinned); replacing with raw gh CLI adds no value here.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          body_path: RELEASE_NOTES.md
+
+  sbom:
+    needs: release # the release must exist before we can attach the SBOM asset
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # attach the SBOM asset to the release
+      actions: read # sbom-action re-downloads its uploaded artifact (artifacts API) to attach it
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Generate + attach SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          format: cyclonedx-json
+          artifact-name: wave-foundation.cdx.json
+          upload-release-assets: true

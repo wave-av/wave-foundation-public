@@ -1,0 +1,23 @@
+# WAVE copywriting gate — GitHub Actions CI (copy into a repo's .github/workflows/).
+# Required check: enforces the voice-and-tone standard on every PR touching user-facing copy.
+name: copywriting-gate
+on:
+  pull_request:
+    paths:
+      - "**/*.tsx"
+      - "**/*.ts"
+      - "**/*.md"
+      - "**/*.mdx"
+permissions:
+  contents: read
+jobs:
+  copy-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history for --changed diff vs base
+      - name: Run WAVE copywriting gate
+        run: |
+          chmod +x frameworks/copywriting/copy-checker.sh
+          bash frameworks/copywriting/copy-checker.sh --changed

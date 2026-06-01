@@ -1,0 +1,86 @@
+# Reusable Bot Token Generator
+# Mints a short-lived GitHub App installation token so a calling workflow can act as a specific
+# bot identity instead of the generic github-actions[bot]. Harvested from wave-surfer-connect and
+# genericized: bot-name + secret-prefix are inputs (no hardcoded wave-av names).
+#
+# Per-repo setup — store these secrets for each bot (default prefix "BOT"):
+#   <PREFIX>_<BOT_NAME>_APP_ID        e.g. BOT_RELEASE_APP_ID
+#   <PREFIX>_<BOT_NAME>_PRIVATE_KEY   e.g. BOT_RELEASE_PRIVATE_KEY
+#   (BOT_NAME is upper-cased; hyphens -> underscores.)
+#
+# Usage:
+#   jobs:
+#     mint:
+#       uses: ./.github/workflows/reusable-bot-token.yml
+#       with: { bot-name: release }
+#       secrets: inherit
+name: Reusable Bot Token
+
+# Reusable workflow: minimal top-level permissions; callers grant more at the job level.
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      bot-name:
+        description: "Bot identity to mint a token for (used to build secret names)."
+        required: true
+        type: string
+      secret-prefix:
+        description: "Prefix for the App ID / private key secret names."
+        required: false
+        type: string
+        default: "BOT"
+      allowed-bots:
+        description: "Optional space-separated allowlist of valid bot names. Empty = accept any non-empty name."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      token:
+        description: "Installation token for the requested bot."
+        value: ${{ jobs.generate.outputs.token }}
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      token: ${{ steps.app-token.outputs.token }}
+    steps:
+      - name: Validate bot name
+        env:
+          BOT_NAME: ${{ inputs.bot-name }}
+          ALLOWED_BOTS: ${{ inputs.allowed-bots }}
+        run: |
+          if [ -z "$BOT_NAME" ]; then
+            echo "::error::bot-name input is required and must be non-empty."; exit 1
+          fi
+          if [ -n "$ALLOWED_BOTS" ] && ! printf '%s' "$ALLOWED_BOTS" | grep -qwF -- "$BOT_NAME"; then
+            echo "::error::Invalid bot name: $BOT_NAME. Must be one of: $ALLOWED_BOTS"; exit 1
+          fi
+          if ! echo "$BOT_NAME" | grep -qE '^[A-Za-z0-9_-]+$'; then
+            echo "::error::bot-name may only contain letters, digits, hyphen, underscore."; exit 1
+          fi
+
+      - name: Compute secret names
+        id: names
+        env:
+          BOT_NAME: ${{ inputs.bot-name }}
+          PREFIX: ${{ inputs.secret-prefix }}
+        run: |
+          KEY=$(echo "${PREFIX}_${BOT_NAME}" | tr '[:lower:]-' '[:upper:]_')
+          echo "app_id_secret=${KEY}_APP_ID" >> "$GITHUB_OUTPUT"
+          echo "private_key_secret=${KEY}_PRIVATE_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Generate installation token
+        id: app-token
+        # zizmor: ignore[github-app] minting an App installation token is this reusable
+        # workflow's entire purpose; the App's permissions are scoped at the App, not here.
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          # zizmor: ignore[overprovisioned-secrets] dynamic secret names are the documented,
+          # intentional parameterization (per-bot APP_ID/PRIVATE_KEY) — not blanket secret access.
+          app-id: ${{ secrets[steps.names.outputs.app_id_secret] }}
+          private-key: ${{ secrets[steps.names.outputs.private_key_secret] }}

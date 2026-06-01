@@ -1,0 +1,3 @@
+# Raw vendored Anthropic docs are reproducible via ../refresh-docs.sh (web) — not committed.
+**/*.md
+!README.md

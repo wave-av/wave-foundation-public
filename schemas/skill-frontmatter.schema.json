@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wave-av.github.io/wave-foundation/schemas/skill-frontmatter.schema.json",
+  "title": "Claude Code SKILL.md frontmatter",
+  "description": "Validates the YAML frontmatter of a SKILL.md. Point yaml-language-server at this for in-editor validation, and check-jsonschema at it in CI.",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Must equal the skill's directory name. kebab-case (leading underscore allowed for _core- internals).",
+      "pattern": "^[a-z0-9_]+(?:-[a-z0-9_]+)*$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Trigger-oriented. Should start with 'Use when …'.",
+      "minLength": 20,
+      "maxLength": 400
+    },
+    "allowed-tools": {
+      "description": "If present, must be a NON-EMPTY list of tools (or a non-empty comma string). Empty = regression signature.",
+      "oneOf": [
+        { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "argument-hint": { "type": "string" },
+    "context": { "type": "string" },
+    "agent": { "type": "string" },
+    "user-invocable": { "type": "boolean" },
+    "hooks": {
+      "description": "If present, must be a non-empty mapping.",
+      "type": "object",
+      "minProperties": 1
+    }
+  },
+  "additionalProperties": true
+}

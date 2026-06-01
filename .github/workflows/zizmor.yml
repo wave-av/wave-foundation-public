@@ -1,0 +1,34 @@
+name: zizmor (Actions security)
+
+# Static security analysis of GitHub Actions workflows (template injection, spoofable actor
+# checks, credential persistence, over-broad tokens). Run as a CLI gate (fails on findings) —
+# no SARIF/code-scanning upload, which isn't available on private repos without Advanced Security.
+# Accepted by-design findings are suppressed in .github/zizmor.yml (auto-discovered).
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install zizmor==1.25.2
+      - name: Audit workflows
+        env:
+          GH_TOKEN: ${{ github.token }} # enables online audits (known-vulnerable actions via GHSA)
+        run: zizmor .github/workflows/

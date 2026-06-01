@@ -1,0 +1,65 @@
+# Semantic PR Title — enforce Conventional Commits v1.0.0 on PR titles.
+# Harvested from wave-surfer-connect and genericized (runner -> ubuntu-latest). Advisory by design
+# (continue-on-error) — guidance, not a merge blocker. Any WAVE repo can copy this as-is.
+name: Semantic PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read # least privilege at the workflow level; the job escalates only what it needs
+
+concurrency:
+  group: semantic-pr-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # REQUIRED for actions/checkout in the parity step — a job-level permissions block
+      # replaces the workflow default entirely, so without this the token has no repo access and the
+      # private-repo checkout fails with "repository not found" (the parity step's long-standing break).
+      pull-requests: read # the action reads the PR title
+      statuses: write # ...and reports the result as a commit status
+    continue-on-error: true # advisory, not blocking
+    timeout-minutes: 5
+    steps:
+      - name: Validate conventional commit format
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          requireScope: false
+          wip: true
+          subjectPattern: ^(?![A-Z]).+$ # subject must not start with uppercase
+          ignoreLabels: |
+            dependencies
+            bot
+
+      # Parity gate: run the SAME validator the local commit-msg hook + pr-title-preflight use
+      # (frameworks/hooks/validate-conventional-title.sh), so the rule devs hit locally is byte-for-byte
+      # the rule CI enforces. If this and the amannn action above ever disagree, the rules have drifted —
+      # fix the script, not just the YAML. Advisory like the rest of this workflow (continue-on-error).
+      - name: Checkout (for the shared validator)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false # we only need the file tree; never reuse GITHUB_TOKEN
+      - name: Validate title with the shared script (parity with local hook)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash frameworks/hooks/validate-conventional-title.sh "$PR_TITLE"
+
+      - name: Check for breaking change indicator
+        id: breaking
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          HAS_BREAKING=false
+          if echo "$PR_TITLE" | grep -qE '^(feat|fix|refactor|perf)(\([^)]+\))?!:'; then HAS_BREAKING=true; fi
+          if echo "$PR_BODY" | grep -qE '^BREAKING CHANGE:'; then HAS_BREAKING=true; fi
+          echo "has_breaking=$HAS_BREAKING" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_BREAKING" = "true" ]; then echo "::notice::This PR contains breaking changes"; fi

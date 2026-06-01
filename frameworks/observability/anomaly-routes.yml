@@ -1,0 +1,65 @@
+# Anomaly alert routes — Phase 5.2 (Layer 3).
+#
+# Declarative map from an anomaly_finding's severity to the observability sinks that
+# should receive it. A consumer-side poller reads public.anomaly_findings_to_alert
+# (migration 022), routes each row per this file, then calls public.mark_anomaly_alerted().
+#
+# Contract (inherits frameworks/observability/README.md principles):
+#   - Every sink is flag-gated OFF by default (no env → no behavior). A route here only
+#     fires if the sink's env var(s) are set in the consumer's secret store.
+#   - Never forward a secret. Only the fields in `payload_allowlist` leave the system;
+#     the finding's `evidence` jsonb is NOT forwarded wholesale (it can contain resource
+#     ids you don't want in a third-party issue). Forward the summary, not the raw rows.
+#   - A sink failure never blocks routing the others, and never blocks the evaluator.
+#
+# Sinks reference the helpers in frameworks/observability (notify.ts): Sentry =
+# notifyOps, Linear = createLinearIssue, Slack/webhook = OPS_WEBHOOK_URL fan-out.
+
+version: 1
+
+# Fields safe to include in any forwarded payload. Everything else (evidence rows,
+# raw resource ids, scopes) stays in the database.
+payload_allowlist:
+  - rule_name
+  - severity
+  - measured_value
+  - threshold
+  - tenant_id
+  - actor          # opaque uuid — not PII on its own
+  - window_start
+  - window_end
+  - finding_id
+
+# severity → ordered list of sinks. Higher severities are supersets: a blocking
+# finding alerts everywhere; a warning only goes to Sentry; info is logged, not alerted.
+routes:
+  info:
+    sinks: []                       # logged by the poller; no external alert
+    note: "Recorded only. Visible in the dashboard; no page, no issue."
+
+  warning:
+    sinks:
+      - sentry                      # notifyOps(env, msg, extra, "warning")
+    note: "Ops-visible. An engineer sees it in Sentry; no incident is filed."
+
+  blocking:
+    sinks:
+      - sentry                      # notifyOps(env, msg, extra, "error")
+      - linear                      # createLinearIssue → SECURITY team incident
+      - slack                       # OPS_WEBHOOK_URL → #security-incidents
+    note: "Incident. Sentry error + Linear SECURITY issue + Slack page."
+
+# Per-sink configuration. Values are env var NAMES, never the secrets themselves.
+sinks:
+  sentry:
+    env: [SENTRY_DSN]
+    level_by_severity:
+      warning: warning
+      blocking: error
+  linear:
+    env: [LINEAR_API_KEY, LINEAR_TEAM_ID]
+    team: SECURITY                  # the LINEAR_TEAM_ID must point at the SECURITY team
+    title_template: "[anomaly] {rule_name} — {severity} (measured {measured_value} ≥ {threshold})"
+  slack:
+    env: [OPS_WEBHOOK_URL]
+    channel_hint: security-incidents

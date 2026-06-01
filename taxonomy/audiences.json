@@ -1,0 +1,69 @@
+{
+  "$schema": "./audiences.schema.json",
+  "version": "1.0.0",
+  "description": "Audience taxonomy. Every piece of canonical content — rule, framework, doc, skill, hook — declares its primary audience. Three top-level categories; sub-categories let agents pick the right tone, depth, and tool surface.",
+  "audiences": {
+    "human": {
+      "description": "Carbon-based developers reading docs or running scripts directly. Default for top-level docs.",
+      "sub": {
+        "human/contributor": {
+          "description": "Someone building or modifying wave-foundation itself. Read every doc carefully.",
+          "tone": "concise, technical, no hand-holding",
+          "examples": ["CONTRIBUTING.md", "RELEASING.md", "SYSTEM.md"]
+        },
+        "human/consumer": {
+          "description": "Engineer adopting wave-foundation in their own project via consume.sh / the plugin.",
+          "tone": "task-oriented, copy-pasteable, defensive defaults",
+          "examples": ["CONSUME.md", "examples/", "rules/*.md (when read directly)"]
+        },
+        "human/operator": {
+          "description": "SRE / oncall responding to alerts; runs scripts/* + reads runbooks.",
+          "tone": "<60s to action; symptom → first command → diagnosis",
+          "examples": ["frameworks/incident-response/runbook-template.md", "scripts/dogfood.sh"]
+        }
+      }
+    },
+    "agent": {
+      "description": "AI agents (Claude, Codex, Cursor, Gemini, Grok, Copilot) reading instructions and making code edits.",
+      "sub": {
+        "agent/main": {
+          "description": "The primary session-level agent. Reads AGENTS.md / CLAUDE.md / GEMINI.md at session start.",
+          "tone": "imperative, with rule precedence stated",
+          "examples": ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]
+        },
+        "agent/subagent": {
+          "description": "Dispatched subagent (Task tool, agent-context-injector). Cold start; needs explicit context.",
+          "tone": "self-contained brief: goal + constraints + deliverable + word cap",
+          "examples": ["frameworks/prompts/agent-context-injector.sh", "plugin/agents/*.md"]
+        },
+        "agent/hook": {
+          "description": "PreToolUse / PostToolUse / Stop hooks. Headless; no conversational context.",
+          "tone": "single-purpose validation/transform; deterministic exit codes",
+          "examples": ["plugin/hooks/*.sh", "scripts/check-no-zero-byte.sh"]
+        }
+      }
+    },
+    "user": {
+      "description": "End users of wave-built apps. Never reads canonical content directly; this taxonomy entry covers content shown TO them (error messages, status pages, voice output).",
+      "sub": {
+        "user/end": {
+          "description": "Authenticated paying user of a WAVE app.",
+          "tone": "plain language; no internal jargon; honest about scope",
+          "examples": ["frameworks/incident-response/ § external comms", "taxonomy/voice-roles.json (user-facing voices)"]
+        },
+        "user/anonymous": {
+          "description": "Pre-auth visitor; marketing / docs site readers.",
+          "tone": "approachable; assumes no prior context; SEO-aware",
+          "examples": ["docs/ (when published via open-core)", "README.md"]
+        }
+      }
+    }
+  },
+  "rules": {
+    "default_when_unspecified": "human/contributor",
+    "fallback_chain": [
+      "specific sub-audience -> top-level category -> default"
+    ],
+    "multi_audience_content": "Pick the PRIMARY audience. Note secondary in the doc's header (e.g. '> Audience: human/operator (primary), agent/main (secondary)'). Don't try to serve both with one tone."
+  }
+}
