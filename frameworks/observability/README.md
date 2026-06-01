@@ -68,8 +68,7 @@ spoke's secret store — **never commit it into the repo**.
 | wave-foundation | `wave-foundation` | chassis tooling / consumer-smoke |
 | wave-moq-edge | `wave-moq-edge` | MoQ media edge |
 | wave-ai-cloud | `wave-ai-cloud` | Mac Studio AI platform / router infra |
-| claude-protocol-suite | `claude-protocol-suite` | skills / agent tooling |
-| burnrate | `burnrate` | Electron desktop app |
+| wave-sdk | `wave-sdk` | published SDK fleet / docs site |
 
 > DSNs themselves live in each spoke's secret manager + the operator's local manifest, not here. This
 > table is the authoritative **map of which project belongs to which spoke** so a new spoke doesn't

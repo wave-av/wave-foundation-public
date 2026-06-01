@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wave.online/schemas/capabilities/v1.json",
+  "title": "WAVE repo capabilities",
+  "description": "A machine-readable description of what a WAVE repo exposes, consumes, and how it fits the platform. Updated on every push to master; aggregated by wave-foundation/frameworks/platform-registry.",
+  "type": "object",
+  "required": ["schemaVersion", "repo", "version", "lifecycle"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1",
+      "description": "Pin to '1' until the schema goes v2. Breaking changes bump this; CI rejects mismatches."
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^wave-av/[a-z0-9._-]+$",
+      "description": "Canonical org/name slug. MUST match the GitHub repo URL."
+    },
+    "version": {
+      "type": "string",
+      "description": "SemVer or `0.0.0-pre` for repos that haven't tagged yet."
+    },
+    "lifecycle": {
+      "enum": ["alpha", "beta", "ga", "sunsetting", "archived"],
+      "description": "Promotion stage. alpha = experimental, beta = stable shape, ga = production, sunsetting = scheduled removal, archived = closed."
+    },
+    "planeLayer": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 4,
+      "description": "WAVE Protocol Plane layer (0 = Operator, 1 = Edge, 2 = Bridges, 3 = Local, 4 = Hardware). Null for non-plane repos (e.g. marketing sites, SDKs)."
+    },
+    "foundationPin": {
+      "type": "string",
+      "description": "Value of .foundation-version at HEAD — typically `v1` (moving major tag) or an exact SHA/`vX.Y.Z`."
+    },
+    "maintainers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["team"],
+        "additionalProperties": false,
+        "properties": {
+          "team": { "type": "string", "description": "GitHub team slug, e.g. 'core', 'operator', 'agent-ops'" },
+          "onCallRotation": { "type": "string", "description": "PagerDuty/Linear rotation id, optional" }
+        }
+      }
+    },
+
+    "exposes": {
+      "type": "object",
+      "description": "What this repo offers to other systems.",
+      "additionalProperties": false,
+      "properties": {
+        "apis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["protocol", "endpoint"],
+            "additionalProperties": false,
+            "properties": {
+              "protocol": { "enum": ["http", "websocket", "grpc", "webrtc-whip", "webrtc-whep", "rtmp", "srt", "ndi", "dante", "moq"] },
+              "endpoint": { "type": "string", "description": "Canonical URL or address pattern, e.g. https://api.wave.online/feed/{slug}" },
+              "openapiRef": { "type": "string", "description": "wave-av/api-spec ref tag for the schema, e.g. 'v3.openapi.yaml#/paths/~1feed~1{slug}'" },
+              "auth": { "enum": ["none", "bearer-jwt", "device-code", "x402", "wave-token-v1"] },
+              "metered": { "type": "boolean", "description": "Is this gated by x402 / billing?" }
+            }
+          }
+        },
+        "cli": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["binary"],
+            "additionalProperties": false,
+            "properties": {
+              "binary": { "type": "string", "description": "Installed command name, e.g. 'wave-certify'" },
+              "subcommands": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "mcpTools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "Tool name as exposed by the MCP server" },
+              "schemaRef": { "type": "string", "description": "Optional ref to the tool's input schema" }
+            }
+          }
+        },
+        "renderSurfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["electron-app", "web-route", "cli-tui", "browser-extension", "obs-plugin", "vmix-titles", "stream-deck", "bitfocus-companion-module"] },
+              "id": { "type": "string", "description": "App / route / module identifier" }
+            }
+          }
+        },
+        "hardwareDrivers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["device"],
+            "additionalProperties": false,
+            "properties": {
+              "device": { "type": "string", "description": "Hardware family/model identifier" },
+              "transport": { "enum": ["usb-hid", "usb-cdc", "serial", "ethernet", "wifi", "pcie", "bluetooth"] },
+              "vendor": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "consumes": {
+      "type": "object",
+      "description": "What this repo depends on. CI will reject if a listed product/endpoint is missing or sunsetting without an explicit ack.",
+      "additionalProperties": false,
+      "properties": {
+        "waveProducts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repo"],
+            "additionalProperties": false,
+            "properties": {
+              "repo": { "type": "string", "description": "Other wave-av/* repo this depends on" },
+              "endpoint": { "type": "string", "description": "Specific endpoint or capability path, optional" }
+            }
+          }
+        },
+        "thirdParty": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["service"],
+            "additionalProperties": false,
+            "properties": {
+              "service": { "type": "string", "description": "e.g. 'stripe', 'sentry', 'audinate-dante', 'vizrt-ndi', 'cloudflare-r2'" },
+              "licenseGated": { "type": "boolean", "description": "True if the third party gates redistribution behind a paid license" }
+            }
+          }
+        },
+        "foundationFrameworks": {
+          "type": "array",
+          "items": { "type": "string", "description": "Sub-paths under wave-foundation/frameworks/* this repo uses" }
+        },
+        "hardware": {
+          "type": "array",
+          "items": { "type": "string", "description": "Physical hardware required at runtime (NOT what this repo drives — what it needs to be present)" }
+        }
+      }
+    },
+
+    "events": {
+      "type": "object",
+      "description": "Event-bus / observability surfaces.",
+      "additionalProperties": false,
+      "properties": {
+        "publishes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic"],
+            "additionalProperties": false,
+            "properties": {
+              "topic": { "type": "string", "description": "e.g. 'x402.charge', 'auth.signed-in', 'encoder.live'" },
+              "transport": { "enum": ["sentry", "eventbus", "webhook", "stripe-event", "linear", "x402-meter"] }
+            }
+          }
+        },
+        "subscribes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic"],
+            "additionalProperties": false,
+            "properties": {
+              "topic": { "type": "string" },
+              "transport": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "description": "Free-form labels for filtering (e.g. 'public', 'operator', 'meter', 'on-prem', 'cloud')" }
+    }
+  }
+}

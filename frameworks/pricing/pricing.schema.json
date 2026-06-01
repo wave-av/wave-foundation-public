@@ -65,6 +65,44 @@
       "type": "object",
       "description": "Optional: legacy pricing preserved during migration.",
       "additionalProperties": true
+    },
+    "topology_meters": {
+      "type": "object",
+      "description": "Optional: which canonical meters a given runtime TOPOLOGY profile activates. Generalizes dispatch's code_meters() (decisions always; ai_tokens only when the edge-exec topology is present). Keys are topology profile names; values are the canonical meters active in that profile. Lets the push job + reconcile derive the live meter set per deployment instead of hardcoding it.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "enum": ["decisions", "stream_minutes", "bandwidth_gb", "storage_gb", "ai_tokens", "voice_minutes", "transcription_minutes", "compute_minutes", "api_calls"]
+        }
+      }
+    },
+    "platform_tiers": {
+      "type": "array",
+      "description": "Optional: per-tier entitlements + quotas (resolves the #36 deferral). When a product folds into the WAVE platform tiers (human_access: module) it declares, per tier, the module flags it enables and its per-meter included quota; beyond quota = metered overage at the canonical rate. Overage MUST default to capped+alert (uncapped is opt-in).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tier"],
+        "properties": {
+          "tier": { "enum": ["Starter", "Launch", "Scale", "Volume"], "description": "WAVE platform tier (frameworks/pricing/README.md ladder)." },
+          "modules": {
+            "type": "object",
+            "description": "Module entitlement flags this tier unlocks for the product (e.g. {\"ndi\": true}).",
+            "additionalProperties": { "type": "boolean" }
+          },
+          "quotas": {
+            "type": "object",
+            "description": "Included per-meter quota for this tier (canonical meter → included units/mo). Beyond this = metered overage.",
+            "additionalProperties": { "type": "number", "minimum": 0 }
+          },
+          "overage": {
+            "enum": ["capped", "uncapped"],
+            "default": "capped",
+            "description": "Overage posture. MUST default to capped+alert; uncapped is explicit opt-in (the human footgun guard)."
+          }
+        }
+      }
     }
   },
   "allOf": [

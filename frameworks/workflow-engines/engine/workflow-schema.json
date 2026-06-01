@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-workflow.schema.json",
+  "title": "Agent Workflow",
+  "description": "Schema for defining standardized agent workflows with checkpoints, escalation, and outcome reporting",
+  "type": "object",
+  "required": ["name", "version", "description", "trigger", "steps", "outcomes"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique workflow identifier (kebab-case)",
+      "pattern": "^[a-z][a-z0-9-]+$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the workflow",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this workflow does"
+    },
+    "category": {
+      "type": "string",
+      "description": "Workflow category",
+      "enum": [
+        "bug-fix",
+        "incident-response",
+        "feature-implementation",
+        "security-audit",
+        "performance-optimization",
+        "code-review",
+        "documentation",
+        "maintenance",
+        "onboarding"
+      ]
+    },
+    "trigger": {
+      "type": "object",
+      "description": "What triggers this workflow",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["manual", "event", "schedule", "webhook", "linear-issue"]
+        },
+        "eventName": {
+          "type": "string",
+          "description": "Event name for event-triggered workflows"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Cron schedule for scheduled workflows"
+        },
+        "linearLabels": {
+          "type": "array",
+          "description": "Linear issue labels that trigger this workflow",
+          "items": { "type": "string" }
+        },
+        "conditions": {
+          "type": "array",
+          "description": "Additional conditions for triggering",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": { "type": "string" },
+              "operator": { "type": "string", "enum": ["equals", "contains", "matches", "exists"] },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Required inputs for the workflow",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "description"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["string", "number", "boolean", "array", "object"] },
+          "description": { "type": "string" },
+          "required": { "type": "boolean", "default": false },
+          "default": {},
+          "validation": { "type": "string" }
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Context configuration for the workflow",
+      "properties": {
+        "maxBudget": {
+          "type": "string",
+          "description": "Maximum context budget percentage",
+          "enum": ["30", "50", "70"],
+          "default": "50"
+        },
+        "requiredMemories": {
+          "type": "array",
+          "description": "Memory patterns to load at start",
+          "items": { "type": "string" }
+        },
+        "requiredRules": {
+          "type": "array",
+          "description": "Rules that must be active",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered list of workflow steps",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "action"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique step identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable step name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this step does"
+          },
+          "action": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agent-spawn",
+                  "tool-call",
+                  "validation",
+                  "checkpoint",
+                  "decision",
+                  "parallel",
+                  "human-review",
+                  "notification"
+                ]
+              },
+              "agentType": {
+                "type": "string",
+                "description": "Agent type for agent-spawn actions"
+              },
+              "tool": {
+                "type": "string",
+                "description": "Tool name for tool-call actions"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Prompt or task description"
+              },
+              "timeout": {
+                "type": "number",
+                "description": "Timeout in seconds"
+              },
+              "retries": {
+                "type": "number",
+                "description": "Number of retry attempts",
+                "default": 3
+              }
+            }
+          },
+          "checkpoint": {
+            "type": "object",
+            "description": "Checkpoint configuration for this step",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "saveState": { "type": "boolean", "default": true },
+              "allowRollback": { "type": "boolean", "default": true }
+            }
+          },
+          "conditions": {
+            "type": "object",
+            "description": "Conditions for step execution",
+            "properties": {
+              "runIf": {
+                "type": "string",
+                "description": "Expression that must be true to run step"
+              },
+              "skipIf": {
+                "type": "string",
+                "description": "Expression that causes step to be skipped"
+              }
+            }
+          },
+          "onSuccess": {
+            "type": "string",
+            "description": "Next step ID on success"
+          },
+          "onFailure": {
+            "type": "object",
+            "description": "Failure handling configuration",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["retry", "skip", "escalate", "rollback", "abort"]
+              },
+              "nextStep": { "type": "string" },
+              "escalateTo": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "checkpoints": {
+      "type": "object",
+      "description": "Global checkpoint configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "storageLocation": {
+          "type": "string",
+          "default": ".claude/state/workflows"
+        },
+        "maxCheckpoints": {
+          "type": "number",
+          "default": 10
+        },
+        "autoCleanup": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "description": "Escalation configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "channels": {
+          "type": "array",
+          "description": "Escalation channels in priority order",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["slack", "linear", "email", "pagerduty"] },
+              "target": { "type": "string" },
+              "severity": { "type": "array", "items": { "type": "string", "enum": ["low", "medium", "high", "critical"] } }
+            }
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "description": "Time in seconds before escalating",
+          "default": 300
+        },
+        "maxAttempts": {
+          "type": "number",
+          "default": 3
+        }
+      }
+    },
+    "outcomes": {
+      "type": "object",
+      "description": "Possible workflow outcomes",
+      "required": ["success", "failure"],
+      "properties": {
+        "success": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string" },
+                  "config": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "failure": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" },
+            "actions": { "type": "array" }
+          }
+        },
+        "partial": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" },
+            "actions": { "type": "array" }
+          }
+        }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "description": "Outcome reporting configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["linear", "slack", "supabase", "file"] },
+              "config": { "type": "object" }
+            }
+          }
+        },
+        "includeMetrics": {
+          "type": "boolean",
+          "default": true
+        },
+        "includeTimeline": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Metrics to track for this workflow",
+      "properties": {
+        "track": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "duration",
+              "steps_completed",
+              "retries",
+              "escalations",
+              "checkpoint_restores",
+              "agent_spawns",
+              "tool_calls"
+            ]
+          }
+        },
+        "slo": {
+          "type": "object",
+          "properties": {
+            "maxDuration": { "type": "number" },
+            "successRate": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

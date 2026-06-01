@@ -19,8 +19,8 @@ Automated PR review (CodeRabbit / the pr-review-toolkit agents) wired per repo f
 
 ## Methodology registry
 
-`claude-hub/methodology-registry.json` is the seed — the BurnRate 105-method engine, adapted per repo
-type (`/methodology-audit`). Migrate the registry here as the canonical copy.
+`methodology-registry.json` is the canonical registry — a method-priority engine adapted per repo
+type. See [`methodology.md`](methodology.md) for how to run the cycle.
 
 ## Troubleshooting runbook
 

@@ -20,12 +20,16 @@ a finding is identified by `path + rule + message`, not its line.
 | Python | `ruff check` (pinned) | `scripts/python-check-changed.sh` | `.python-baseline.txt` | BLOCKING |
 | C / C++ | `cppcheck --enable=warning,portability` | `scripts/cpp-check-changed.sh` | `.cppcheck-baseline.txt` | DORMANT* |
 | Rust | `cargo clippy -W clippy::all` | `scripts/rust-check-changed.sh` | `.clippy-baseline.txt` | DORMANT* |
+| Go | `go vet ./...` (per module) | `scripts/go-check-changed.sh` | `.govet-baseline.txt` | DORMANT* |
+| Ruby | `rubocop` (whole-file) | `scripts/ruby-check-changed.sh` | `.rubocop-baseline.txt` | DORMANT* |
 
-\*DORMANT = wired, runs on every PR, but a clean no-op here because wave-foundation has **zero native
-files** (the baselines are empty by design — same as the SQL/TS "ready recipe" precedent below). The
-job activates the instant native code appears. It is NOT a faked green: it skips only when no
-C/C++/Rust file changed, and FAILS CLOSED on a missing tool or (for Rust) a `*.rs` with no crate.
-See the **Native languages (C/C++/Rust)** section below.
+\*DORMANT = wired, runs on every PR, but a clean no-op here because wave-foundation has **zero
+native/Go/Ruby files** (the baselines are empty by design — same as the SQL/TS "ready recipe"
+precedent below). The job activates the instant such code appears. It is NOT a faked green: it skips
+only when no file of that language changed, and FAILS CLOSED on a missing tool or (for Rust/Go) a
+source file with no crate/module. Go/Ruby were added for the polyglot SDK fleet (wave-av/sdks ships
+Go + Ruby + Rust clients); they activate in any consumer repo that adopts the gate over real
+`.go`/`.rb`. See the **Native + polyglot languages** section below.
 
 **Skipped** (per "skip any language the repo doesn't use"):
 
@@ -79,7 +83,7 @@ in a PR-touched file blocks the merge.
 Never leave a `|| true` on a required check — a faked-green required check is silent error-masking
 that defeats the ratchet.
 
-## Native languages (C/C++/Rust)
+## Native + polyglot languages (C/C++/Rust/Go/Ruby)
 
 Native repos (`wave-transports` and the per-protocol native bindings — see
 [polyrepo-topology](../rules/polyrepo-topology.md)) ship C/C++/Rust addons. Those languages need the

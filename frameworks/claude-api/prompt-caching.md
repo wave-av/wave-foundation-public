@@ -167,6 +167,15 @@ Caching needs no env of its own; it rides the routing credentials.
 | `ANTHROPIC_API_KEY` | tier-4 direct frontier (caching passes through) |
 | `VERCEL_AI_GATEWAY_API_KEY` | tier-2 gateway (frontier passthrough preserves `cache_control`) |
 
+## Enforcement (gate)
+
+`lint-cache-control.sh` (gate id `claude-api-cache`, registered in `../gates/registry.yaml`) flags any
+Claude request that sets a `system` prefix but never sets `cache_control` — run at commit time (pre-commit)
+and in CI (`checks.yml`), inherited by every spoke via `foundation-gate.yml@v1`. Advisory during rollout.
+A genuinely per-request-varying prefix that *shouldn't* cache is marked `cache-exempt` on the line. The
+reference engine (`../model-routing/local_offload/shim/engine.py`) already caches the last `system` block
+(or, if there's no system, the last tool) and accepts `req["cache_ttl"]=="1h"` for the 1-hour cache.
+
 ## Related
 
 - [`README.md`](./README.md) — model strings, thinking/effort, request surface

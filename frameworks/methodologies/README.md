@@ -68,7 +68,7 @@ Renovate weekly; pinact verifies SHA pinning; zizmor flags unpinned actions; npm
 
 ### 🟢 13. Portability Check {#portability-check}
 
-No hardcoded `/Users/jakefineman/`; scripts use `$HOME`/`~`; bash compatible with macOS BSD + Linux GNU tooling. Gates: `no_hardcoded_paths`, shell-ratchet (catches GNU-only flags).
+No hardcoded absolute home paths (e.g. `/Users/<name>/`); scripts use `$HOME`/`~`; bash compatible with macOS BSD + Linux GNU tooling. Gates: `no_hardcoded_paths`, shell-ratchet (catches GNU-only flags).
 
 ### 🟢 14. Ollama Model Quality {#ollama-model-quality}
 

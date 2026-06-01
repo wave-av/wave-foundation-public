@@ -2,13 +2,14 @@ name: ratchet (lint-debt)
 
 # Changed-files ratchet: fail only on NEW lint findings in PR-touched files; existing debt is
 # grandfathered in the committed baselines (.shellcheck-baseline.txt, .python-baseline.txt,
-# .cppcheck-baseline.txt, .clippy-baseline.txt).
+# .cppcheck-baseline.txt, .clippy-baseline.txt, .govet-baseline.txt, .rubocop-baseline.txt).
 # shell + python are BLOCKING — observed clean across 5 consecutive PRs (#43-#48), 0 false-positives.
 # Flipped from warn-only on 2026-05-28. Failure on a NEW finding in changed files blocks the PR.
-# cpp + rust are PRESENT-BUT-DORMANT: this repo has zero native files, so the gate is a clean no-op
-# (skips when no C/C++/Rust changed) — NOT a faked green. They activate the moment wave-transports
-# lands native code; observe them clean for 5 PRs there before adding to required checks (same
-# rollout the shell/python ratchets followed). Rationale: docs/ratchet.md "Native (C/C++/Rust)".
+# cpp + rust + go + ruby are PRESENT-BUT-DORMANT: this repo has zero native/Go/Ruby files, so each
+# gate is a clean no-op (skips when nothing of that language changed) — NOT a faked green. cpp/rust
+# activate when wave-transports lands native code; go/ruby activate when a consumer repo with .go/.rb
+# adopts the gate (e.g. the wave-av/sdks polyglot SDKs). Observe each clean for 5 PRs before adding
+# to required checks (same rollout the shell/python ratchets followed). See docs/ratchet.md.
 
 on:
   pull_request:
@@ -111,3 +112,49 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+
+  go:
+    name: go ratchet
+    # DORMANT until a Go module lands (see header). `go vet` must compile the package, so it runs per
+    # go.mod module; with no go.mod the script is a clean no-op over zero changed *.go. Go is
+    # preinstalled on ubuntu-latest — vet needs no extra component (unlike clippy).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # go may fetch modules from the proxy when a module lands
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Go ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/go-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+
+  ruby:
+    name: ruby ratchet
+    # DORMANT until Ruby lands (see header). rubocop does whole-file analysis with no build, so the
+    # gate works the instant the first *.rb appears; with zero *.rb it is a clean no-op. When
+    # activating in a Ruby repo, PIN the rubocop version here + regenerate the baseline for parity.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit # gem fetches rubocop from RubyGems
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install rubocop (pin on activation for signature parity — see header)
+        # --user-install: the runner's system gem dir (/var/lib/gems) is not writable without sudo;
+        # install to the user gem dir and put its bin on PATH (mirrors the shell job's pip --user).
+        run: gem install --user-install --no-document rubocop
+      - name: Ruby ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
+          bash scripts/ruby-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci

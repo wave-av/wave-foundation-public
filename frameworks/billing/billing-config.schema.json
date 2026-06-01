@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wave-foundation/frameworks/billing/billing-config.schema.json",
+  "title": "WAVE product billing config",
+  "description": "Per-deployment billing.config.yaml — the settlement TOPOLOGY (how/where a product's usage is collected), companion to pricing.yaml (what it costs). Code is authoritative; this declares which provider is the invoicing-of-record, which are shadows, the audit mirror, and the cents passthrough invariant. See frameworks/billing/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["product", "authoritative", "passthrough_unit_decimal", "idempotency", "meters"],
+  "properties": {
+    "product": {
+      "type": "string",
+      "description": "Product/spoke slug — MUST match pricing.yaml.product."
+    },
+    "authoritative": {
+      "enum": ["none", "stripe", "metronome"],
+      "description": "The invoicing-of-record provider (issues the collectible invoice). 'none' = ledger-only, billing dark (the safe default until a deliberate go-live). Recommended live default: 'stripe'."
+    },
+    "shadows": {
+      "type": "array",
+      "default": [],
+      "description": "Providers that RATE the same usage but never collect (collect=false) — rating oracles for reconcile + dual-readiness. Must not include the authoritative provider.",
+      "items": { "enum": ["stripe", "metronome"] },
+      "uniqueItems": true
+    },
+    "mirror": {
+      "description": "The audit/analytics store (third system of record). It never prices.",
+      "oneOf": [{ "type": "null" }, { "enum": ["supabase"] }]
+    },
+    "passthrough_unit_decimal": {
+      "const": "100",
+      "description": "THE CENTS INVARIANT. The metered price charges 100 cents per unit-of-summed-value, so invoice_cents = Σ(amount_usd dollars) × 100. This MUST be the string '100'. Any other value silently mis-bills (the 100× class). Pinned as a const so the schema itself rejects a regression."
+    },
+    "idempotency": {
+      "const": "per-decision-uuid",
+      "description": "Dedup discipline: one UUID minted per billable decision, sent verbatim to every sink (ledger + authoritative + shadows + mirror). Pinned so a config can't silently disable cross-store dedup."
+    },
+    "meters": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The meters this product bills and their CENTS rate (= code-dollars × 100). Names MUST be canonical meters from frameworks/pricing (no product-local twins).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "rate_cents"],
+        "properties": {
+          "name": {
+            "enum": ["decisions", "stream_minutes", "bandwidth_gb", "storage_gb", "ai_tokens", "voice_minutes", "transcription_minutes", "compute_minutes", "api_calls"],
+            "description": "Canonical meter (frameworks/pricing registry)."
+          },
+          "rate_cents": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Rate stored in CENTS = code-dollars × 100 (e.g. $0.0001/decision → 0.01; a $1/unit passthrough meter → 100). Dollars-as-cents here is a silent 100× under-bill."
+          },
+          "aggregation": {
+            "enum": ["sum", "last", "count"],
+            "default": "sum",
+            "description": "Meter aggregation; must match the provider meter's default_aggregation."
+          }
+        }
+      }
+    },
+    "metronome_connection_gated": {
+      "type": "boolean",
+      "default": true,
+      "description": "True until the dashboard/OAuth org→Stripe connection + a prod Metronome key exist. While true, Metronome may only be a shadow, never authoritative in prod."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "authoritative": { "const": "metronome" } }, "required": ["authoritative"] },
+      "then": {
+        "properties": { "metronome_connection_gated": { "const": false } },
+        "description": "Metronome cannot be the invoicing-of-record provider until its org connection is established (metronome_connection_gated=false)."
+      }
+    }
+  ]
+}

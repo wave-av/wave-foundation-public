@@ -1,8 +1,10 @@
 # Hooks Pack
 
-The standard hook pipeline, proven across wave-surfer-connect + claude-hub. Install via the foundation plugin (once `plugin/` exists) or copy the reference implementations from `~/.claude/hooks/` and `wave-surfer-connect/.claude/hooks/`.
+The standard hook pipeline, proven across multiple WAVE repos. Install via the foundation plugin, or copy the reference implementations from `plugin/hooks/` in this repo into your agent's hooks directory.
 
-## Global hooks (~/.claude/hooks/ — applies to all projects)
+Hooks come in two tiers: **global** (apply to every project, e.g. `~/.claude/hooks/`) and **project** (scoped to one repo's `.claude/hooks/`).
+
+## Global hooks (apply to all projects)
 
 | Hook | Event | Purpose |
 |------|-------|---------|
@@ -26,7 +28,7 @@ The standard hook pipeline, proven across wave-surfer-connect + claude-hub. Inst
 
 Kill switch: `touch /tmp/claude/ollama-disabled` to disable all local LLM hooks.
 
-## Project hooks (wave-surfer-connect — proven patterns for complex projects)
+## Project hooks (proven patterns for complex projects)
 
 ### Guards (PreToolUse — can exit 2 to block)
 
@@ -87,6 +89,23 @@ One rule, three call sites (commit-msg hook · PR-create preflight · CI parity)
 without first failing locally. This is the seed of a broader **left-shift gate** family: version-sync,
 file-size, foundation-pin drift, and verify-routes all have the same shape — a CI rule that should also
 run at commit/push time off a shared script.
+
+## Hook wrappers (`frameworks/hooks/`)
+
+Two product-agnostic wrappers wrap **any** hook command — they take `<hook-name> <command> [args…]`
+and pass through the wrapped hook's exit code. Wire them in `hooks.json` by wrapping the real hook.
+
+| Wrapper | What it does |
+|---------|--------------|
+| `hook-circuit-breaker-wrapper.sh` | Per-`(hook, session)` failure counter. After `HOOK_BREAKER_MAX` (default 3) failures it stops invoking a **non-protected** hook for the rest of the session and lets the operation proceed (fail-open for noise). **Security guards are exempt** — any hook whose name contains `guard`/`secret`/`permission`/`rls`/`safety`/`sql-guard`/`circuit-breaker` (or a `PROTECTED_HOOKS_EXTRA` substring) always runs, so the breaker can't be abused to disable a guard. |
+| `hook-timer-wrapper.sh` | Logs each run's duration to a JSONL cost file for latency attribution **and** enforces a hard timeout (`HOOK_TIMER_TIMEOUT`, default 10s) via `timeout(1)`, so a hung hook can't block the session (exit 124 on timeout). |
+
+Both honor `CLAUDE_SESSION_ID`, write under `${TMPDIR:-/tmp}/claude/`, and are `set +e` so they
+never crash the agent. Compose them (timer outside, breaker inside) to get both behaviors.
+
+Hook-authoring **security rules** for the hooks you wrap live in `rules/21-hooks/` (shell-arg
+injection, anti-loop cap, never-block-on-non-decision-events, strict event/tool matching,
+env/payload sanitization).
 
 ## Hook standards
 

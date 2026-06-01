@@ -142,21 +142,31 @@ class AnthropicEngine:
             payload["thinking"] = {"type": "adaptive"}
             payload["output_config"] = {"effort": req.get("effort") or "high"}
 
-        # frameworks/claude-api: prompt caching — set cache_control on the last stable `system` block so a
-        # repeated system prefix is cached (0.1x reads vs full $5/MTok). Render order tools->system->messages;
-        # keep volatile content after the last breakpoint. Min cacheable prefix opus-4-8/sonnet-4-6 = 1,024 tokens
-        # (authoritative live-doc value; an older cached skill table said 4,096 for 4.8 — flagged nuance),
-        # Haiku 4.5 = 4,096; below the minimum it silently won't cache (cache_creation_input_tokens=0).
+        # frameworks/claude-api: prompt caching — put ONE cache_control breakpoint on the last stable prefix
+        # block so a repeated prefix is cached (~0.1x reads vs full $5/MTok input). Render order is
+        # tools -> system -> messages, and a breakpoint caches everything rendered before it: so a marker on
+        # the last `system` block ALSO caches the tools that precede it (no separate tool breakpoint needed).
+        # Only when there is NO system block do we mark the last tool, so a tools-only request still caches.
+        # TTL: default 5-minute ephemeral; pass req["cache_ttl"]=="1h" for the 1-hour cache (2x write cost —
+        # worth it only for bursty traffic with gaps > 5m). Min cacheable prefix: Opus 4.8 + Sonnet 4.6/4.5
+        # = 1,024 tokens (Opus 4.8 LOWERED the min vs 4.7 — short prompts that missed on 4.7 now cache);
+        # Opus 4.7/4.6/4.5 + Haiku 4.5 = 4,096; below the minimum it silently won't cache
+        # (cache_creation_input_tokens stays 0). Verify with usage.cache_read_input_tokens.
+        cc = {"type": "ephemeral", "ttl": "1h"} if req.get("cache_ttl") == "1h" else {"type": "ephemeral"}
         system = req.get("system")
         if system is not None:
             if isinstance(system, str):
                 system = [{"type": "text", "text": system}]
             if isinstance(system, list) and system:
                 system = [dict(b) for b in system]
-                system[-1]["cache_control"] = {"type": "ephemeral"}
+                system[-1]["cache_control"] = cc
             payload["system"] = system
         if req.get("tools"):
-            payload["tools"] = req["tools"]
+            tools = [dict(t) for t in req["tools"]]
+            if system is None and tools:
+                # no system breakpoint to cache the (earlier-rendered) tools → cache the tool list itself
+                tools[-1]["cache_control"] = cc
+            payload["tools"] = tools
 
         headers = {"anthropic-version": self.anthropic_version}
         key = _key(self.api_key_env)

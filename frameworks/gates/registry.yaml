@@ -44,6 +44,17 @@ gates:
     ci_job: claude-api-shape
     spoke_advisory: true
 
+  - id: claude-api-cache
+    name: Claude-API prompt-caching (mirrors prompt-caching.md)
+    script: frameworks/claude-api/lint-cache-control.sh
+    vendored: .foundation/frameworks/claude-api/lint-cache-control.sh
+    stage: pre-commit
+    files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php)$'
+    exclude: '^staging/'
+    pass_filenames: true
+    ci_job: claude-api-cache
+    spoke_advisory: true
+
   - id: file-size
     name: file-size gate (code <= 800 lines)
     script: frameworks/gates/scripts/check-file-size.sh
@@ -84,3 +95,8 @@ gates:
 # cleanly (installed via scripts/install-git-hooks.sh instead):
 #   - branch-ref-safety  (block force-push / stale push to master|main) — see scaffolder/templates/hooks/pre-push
 #   - prod-token-guard   (extend gitleaks for WAVE prod token shapes)
+#   - billing-contract   (frameworks/billing/validate-billing.py — validate billing.config.yaml against the
+#                         settlement contract: the CENTS INVARIANT etc.). Already runs in CI (checks.yml
+#                         billing-contract job); the commit-time twin needs a python+pyyaml pre-commit hook
+#                         (language: python, additional_dependencies: [pyyaml]) — emit.py currently emits
+#                         `language: script` only, so wire the python-hook emit path before registering here.

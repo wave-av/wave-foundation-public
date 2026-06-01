@@ -8,9 +8,12 @@
 #
 # Blocks (deny): reset --hard/--keep · push --force / --force-with-lease (ANY branch, incl. combined
 #   short flags like -uf) · clean -f* · branch -D · checkout/switch -f · update-ref -d
-#   · reflog expire / gc --prune=now · rebase (except --abort/--continue/--skip).
-# Allows: every non-destructive git (status/add/commit/fetch/pull/merge/log/diff/restore,
-#   soft & mixed reset, branch -d, normal checkout/switch/push).
+#   · reflog expire / gc --prune=now · rebase (except --abort/--continue/--skip)
+#   · mass-staging sweeps (add -A / add --all / add .) · mass-deletion (rm -r / rm . / rm -r --cached)
+#   · history rewrite (filter-repo / filter-branch).
+# Allows: every non-destructive git (status/commit/fetch/pull/merge/log/diff/restore,
+#   soft & mixed reset, branch -d, normal checkout/switch/push). `git add <named-path>` is fine —
+#   only the blanket sweeps are blocked. `git rm <named-file>` is fine — only recursive/blanket rm.
 #
 # Each git invocation is evaluated INDEPENDENTLY: the command is split on shell separators
 # (; | &, newlines) so a destructive op can't hide after a safe one in a chain
@@ -68,6 +71,30 @@ while IFS= read -r seg; do
   printf '%s' "$s" | grep -qE '^git[[:space:]].*\b(reflog[[:space:]]+expire|gc)\b' &&
     printf '%s' "$s" | grep -qE -- '(--expire(-unreachable)?=(now|all)|--prune=now)' &&
     deny "BLOCKED: expiring the reflog / gc --prune=now destroys the recovery net for orphaned commits. Leave the reflog intact."
+
+  # mass-staging sweep: `git add -A` / `add --all` / `add .` (also -u/--update blanket stage).
+  # Stage named paths instead — a blanket sweep can pull in secrets (.env), large binaries, or
+  # another session's in-progress edits on a shared checkout.
+  if printf '%s' "$s" | grep -qE '^git[[:space:]].*\badd\b'; then
+    printf '%s' "$s" | grep -qE -- '([[:space:]]-[A-Za-z]*[Au][A-Za-z]*\b|--all\b|--update\b)' &&
+      deny "BLOCKED: 'git add -A/--all/-u/.' mass-stages everything — risks committing secrets (.env), large binaries, or another session's edits. Stage named paths: 'git add path/to/file'."
+    printf '%s' "$s" | grep -qE -- '[[:space:]]\.([[:space:]]|$)' &&
+      deny "BLOCKED: 'git add .' mass-stages the whole tree — risks committing secrets (.env), large binaries, or another session's edits. Stage named paths: 'git add path/to/file'."
+  fi
+
+  # mass-deletion: recursive `git rm -r` or a blanket `git rm .` (incl. --cached sweeps).
+  # `git rm <named-file>` is allowed; only the recursive/whole-tree forms are blocked.
+  if printf '%s' "$s" | grep -qE '^git[[:space:]].*\brm\b'; then
+    printf '%s' "$s" | grep -qE -- '[[:space:]]-[A-Za-z]*r' &&
+      deny "BLOCKED: 'git rm -r' recursively deletes tracked files (and from disk unless --cached). Remove named files explicitly, or run it yourself in a terminal if truly intended."
+    printf '%s' "$s" | grep -qE -- '[[:space:]]\.([[:space:]]|$)' &&
+      deny "BLOCKED: 'git rm .' deletes the whole tree. Remove named files explicitly, or run it yourself if intended."
+  fi
+
+  # history rewrite: filter-repo / filter-branch rewrite every commit and can unrecoverably
+  # destroy work shared by other sessions/clones. Never let an agent do this.
+  printf '%s' "$s" | grep -qE '^git[[:space:]].*\b(filter-repo|filter-branch)\b' &&
+    deny "BLOCKED: git filter-repo/filter-branch rewrites the entire history and is unrecoverable on a shared repo. If you must scrub history, do it yourself in a dedicated clone."
 
   # rebase (per-segment, so a safe rebase elsewhere in a chain can't whitelist a destructive one).
   # Exception: dedicated worktrees (cwd is a linked worktree, not the primary checkout) — those
