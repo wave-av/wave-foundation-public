@@ -33,8 +33,7 @@ Two independent layers — pick what you need:
 
 ## License
 
-See [`LICENSE`](LICENSE) if present; otherwise licensing is being finalized — open an issue
-before reuse if it is not yet set.
+[Apache License 2.0](LICENSE) — permissive, with an explicit patent grant. Copyright WAVE Online LLC.
 
 ## Contributing
 
