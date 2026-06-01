@@ -121,6 +121,16 @@ repos:
         files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh)$'
         exclude: '^staging/'
 
+      # Prompt-caching nudge: a Claude request with a stable `system` prefix should cache it (0.1x reads
+      # vs full input price). Advisory during rollout. Spokes point this at the vendored copy.
+      - id: claude-api-cache
+        name: Claude-API prompt-caching (mirrors prompt-caching.md)
+        entry: frameworks/claude-api/lint-cache-control.sh
+        language: script
+        files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php)$'
+        exclude: '^staging/'
+        pass_filenames: true
+
       # The hooks below are declared in frameworks/gates/registry.yaml — emit.py --check (run in
       # self-check.yml) fails if these drift from the registry. Add a gate there, not just here.
       - id: file-size

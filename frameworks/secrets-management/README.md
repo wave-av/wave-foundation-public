@@ -76,6 +76,14 @@ git rm .env  &&  echo .env >> .gitignore   # if not already
 
 Token rotation: regenerate the service token in Doppler dashboard, update the GH org/repo secret, run a CI smoke. No code changes.
 
+## Per-repo secrets inventory (`SECRETS.md`)
+
+Every governed repo carries a `SECRETS.md` — the inventory of which secrets it needs, where the
+canonical value lives, and how it rotates (names + locations only, **never values**). The scaffolder
+seeds it from `scaffolder/templates/SECRETS.md` (placeholder-substituted, written once); fill in one
+row per secret. It complements this framework: this doc decides *which store* to use; `SECRETS.md`
+records *what this repo actually uses* so rotation and ownership are auditable per repo.
+
 ## Cross-references
 
 - [`rules/no-secrets-in-git.md`](../../rules/no-secrets-in-git.md) — hard rule + scanner config

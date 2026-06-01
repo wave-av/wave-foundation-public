@@ -1,80 +1,146 @@
 # Workflow Engines Framework
 
-When async, durable, multi-step orchestration is needed — billing reconciliation, video encoding pipelines, retried external API calls, multi-step agent task graphs — the choice of workflow engine shapes a lot of downstream complexity.
+This framework ships a **schema-driven agent workflow engine** — a JSON contract plus a
+shell runtime that executes ordered, checkpointed, escalatable agent workflows. 40+ workflow
+definitions consume it. A workflow is data (`workflow.json` validated against
+[`engine/workflow-schema.json`](engine/workflow-schema.json)); the runtime
+([`engine/workflow-runner.sh`](engine/workflow-runner.sh)) interprets it, so adding or changing a
+workflow never means touching the engine.
 
-This doc compares the five real options for WAVE-stack repos and codifies which to pick.
+> Promoted from `staging/agent-workflows/_framework`. The engine is dogfooded — the foundation
+> runs the same gates against itself (`scripts/dogfood.sh`); shell files here pass the shell ratchet
+> with **zero** new shellcheck findings.
 
-## What "workflow engine" means here
+## The engine
 
-A workflow engine provides:
+Five files under [`engine/`](engine/):
 
-1. **Durable execution** — the workflow survives process crashes, deploys, and node failures; state is persisted
-2. **Retry with backoff** — failed steps retry with policy, not ad-hoc try/catch
-3. **Step composition** — `step1 → step2 → fanout → join → step3` with each step idempotent
-4. **Time-based wait** — sleep for hours/days without burning compute
-5. **Observability** — every run/step inspectable in a dashboard
+| File | Role |
+|------|------|
+| [`workflow-schema.json`](engine/workflow-schema.json) | The **contract**. JSON-Schema 2020-12 describing a valid workflow definition: `name`, `version`, `trigger`, `steps`, `outcomes`, plus optional `checkpoints`/`escalation`/`reporting`/`metrics`. |
+| [`workflow-runner.sh`](engine/workflow-runner.sh) | The **interpreter**. Loads a `workflow.json`, validates it against the schema (via `ajv` when present), runs each step in order, and routes failures by each step's `onFailure.action`. |
+| [`checkpoint-manager.sh`](engine/checkpoint-manager.sh) | **State persistence + rollback.** Snapshots run state to `~/.claude/state/workflows/checkpoints`, restores/rolls back, prunes to `MAX_CHECKPOINTS`. |
+| [`escalation-handler.sh`](engine/escalation-handler.sh) | **Human-in-the-loop.** Fans a failure out to Slack / Linear / PagerDuty by severity (`low → critical`), and tracks acknowledge/resolve in an append-only `escalations.jsonl`. |
+| [`outcome-reporter.sh`](engine/outcome-reporter.sh) | **Result of record.** Writes a per-run outcome report and ships it to configured destinations (file / Slack / Linear / Supabase), plus a `summary` rollup. |
 
-Without a workflow engine you build these capabilities ad-hoc per workflow and they decay. With one, every workflow inherits them.
+The runner `source`s the other three, so a step's `onFailure: rollback` reaches
+`rollback_to_last_checkpoint`, `escalate` reaches `handle_escalation`, and the terminal outcome
+reaches `report_outcome` — one cohesive lifecycle.
 
-## When you need a workflow engine
+## The schema contract
 
-You probably need one when:
+A workflow definition is a single JSON object. The required keys:
 
-- A single user action triggers > 3 async steps with conditional branches
-- Steps fail intermittently and need retry (external API, video encoding, payment confirm)
-- A step needs to "wait 24h then check status" (otherwise = polling loop)
-- Multiple workflows compose (`order → invoice → notify` plus `invoice → reconcile`)
+- **`name`** — kebab-case identifier (`^[a-z][a-z0-9-]+$`).
+- **`version`** — semver (`^\d+\.\d+\.\d+$`). In-flight runs continue on their pinned version.
+- **`description`** — what it does, for humans and for the runner's `--help` listing.
+- **`trigger`** — `{ type: manual | event | schedule | webhook | linear-issue, ... }`.
+- **`steps`** — the ordered work (see below). `minItems: 1`.
+- **`outcomes`** — at least `success` and `failure`, each `{ message, actions[] }`. `partial` optional.
 
-You probably do NOT need one when:
+Optional blocks the runtime honors: `inputs` (typed + validated), `context`
+(`maxBudget`, `requiredMemories`, `requiredRules`), `checkpoints`, `escalation`, `reporting`,
+`metrics` (`track[]` + an `slo` of `maxDuration`/`successRate`).
 
-- The async work is fire-and-forget (just use a queue: SQS, Redis, Trigger.dev simple task)
-- The work is purely request-response (just use the request handler)
+### A step
 
-## Tool matrix
+```json
+{
+  "id": "reproduce",
+  "name": "Reproduce the bug",
+  "action": { "type": "agent-spawn", "agentType": "debugger", "prompt": "...", "timeout": 600, "retries": 2 },
+  "checkpoint": { "enabled": true, "saveState": true, "allowRollback": true },
+  "conditions": { "runIf": "inputs.has_repro == false" },
+  "onSuccess": "write-fix",
+  "onFailure": { "action": "escalate", "escalateTo": "oncall" }
+}
+```
 
-| Tool | Best for | Cost | Notes |
-|------|----------|------|-------|
-| **Inngest (WAVE default)** | TypeScript-native workflows, event-driven, free tier covers most | $0 (free 50K steps/mo) – $$$ | Best DX for the WAVE stack. Workflows are typed code that look like normal functions. Replay, fan-out, throttle built-in. |
-| **Trigger.dev** | Same shape as Inngest, slightly different DX | $0 (free 5K runs/mo) – $$ | Excellent for jobs-style work; v3 is a real durable runtime. Choose if Inngest dashboard doesn't fit. |
-| **Temporal** | Multi-language polyglot, enterprise scale, complex sagas | Self-host (free) / Cloud ($$$) | Heaviest setup. Worth it at 100M+ workflows/mo with cross-language teams. Workflows are imperative code with replay-safe coroutines. |
-| **AWS Step Functions** | AWS-only stack, JSON-defined workflows | $25/M state transitions | If you're already deep in AWS. JSON definition is verbose for complex logic. |
-| **GitHub Actions reusable workflows** | CI/CD orchestration only | $0 (free for public repos) | Use for build/test/deploy chains. NOT for runtime workflows. |
-| **Cron + queue (DIY)** | Simple, low-volume async | $0 | Fine for "send digest emails Mondays at 9am." Avoid for anything multi-step. |
+`action.type` is one of `agent-spawn`, `tool-call`, `validation`, `checkpoint`, `decision`,
+`parallel`, `human-review`, `notification` — each dispatched by a handler in the runner.
+`onFailure.action` is one of `retry`, `skip`, `escalate`, `rollback`, `abort`.
 
-## The WAVE default: Inngest
+## Runner lifecycle
 
-Why:
+```
+workflow-runner.sh <name> [--input k=v] [--resume <checkpoint>] [--dry-run] [--verbose]
+   │
+   ├─ load_workflow        read <name>/workflow.json, validate against the schema
+   ├─ generate_run_id      run_<ts>_<pid>
+   ├─ (resume)             restore_checkpoint if --resume
+   └─ for each step:
+        ├─ checkpoint.enabled?  → create_checkpoint
+        ├─ dispatch by action.type
+        └─ on failure → onFailure.action:
+             retry    → run once more, then escalate
+             skip     → continue
+             escalate → handle_escalation
+             rollback → rollback_to_last_checkpoint; exit
+             abort    → report_outcome failure; exit
+   └─ report_outcome success
+```
 
-1. TypeScript-native — workflows look like normal functions, with type-checked event schemas
-2. Free tier (50K steps/mo) covers typical WAVE-stack volume
-3. Event-driven model fits webhook → workflow naturally
-4. Built-in observability dashboard with replay
-5. Already used in several WAVE consumers
+`--dry-run` validates and narrates without spawning agents or calling tools — use it in CI to
+prove a new `workflow.json` is well-formed before it can run for real.
 
-Trade-off: Python-heavy teams might prefer Temporal (multi-lang). For pure TS/JS, Inngest wins on DX.
+## Authoring a workflow (consumer guide)
+
+1. **Create** `agent-workflows/<your-workflow>/workflow.json`.
+2. **Conform** to [`engine/workflow-schema.json`](engine/workflow-schema.json) — minimally
+   `name`, `version`, `description`, `trigger`, `steps`, `outcomes`.
+3. **Validate** — `ajv validate -s engine/workflow-schema.json -d <your-workflow>/workflow.json`
+   (the runner does this automatically when `ajv` is on `PATH`).
+4. **Dry-run** — `engine/workflow-runner.sh <your-workflow> --dry-run` to walk the steps.
+5. **Wire integrations** via env, never hard-coded: `SLACK_ESCALATION_WEBHOOK`,
+   `SLACK_WEBHOOK_URL`, `PAGERDUTY_ROUTING_KEY`, `WORKFLOW_DASHBOARD_URL`, `REPORT_DESTINATIONS`,
+   `MAX_CHECKPOINTS`. Absent integrations degrade to a skip-with-message, never a hard failure.
 
 ## Hard rules
 
-1. **Every workflow step is idempotent.** Inngest replays on failure; if `charge_card` runs twice it must charge once. Use idempotency keys keyed on `event_id + step_name`. See `frameworks/events-inngest-workflows/idempotency.md` (when wired).
-2. **No raw secrets in workflow payloads.** Steps receive `event.data`; never put rail keys, license keys, raw auth headers in `data`. Pass `customer_id` and look up the secret server-side.
-3. **Time-based waits use the engine's wait primitive**, not `setTimeout`. `step.sleepUntil(date)` survives deploys; `setTimeout` does not.
-4. **Workflow definitions are versioned.** Changing a workflow's step shape mid-run requires a new version; old in-flight runs continue on the old version until drained.
+1. **Every step is idempotent.** A step may be retried (`onFailure: retry`) or resumed from a
+   checkpoint; running it twice must equal running it once. Key side effects on `run_id + step_id`.
+2. **No secrets in the workflow definition or run state.** `workflow.json`, checkpoints, and
+   outcome reports are persisted/shared. Pass an identifier and look the secret up at the edge —
+   same rule as [`frameworks/observability`](../observability/README.md).
+3. **Definitions are versioned.** Changing a workflow's step shape requires a `version` bump; in-flight
+   runs drain on the old shape.
+4. **State is local + disposable.** Checkpoints/reports live under `~/.claude/state/workflows` and are
+   per-machine — they are a resume aid, not the system of record. Durable outcomes go to a `reporting`
+   destination.
 
-## Workflow vs queue vs cron
+## When to use this engine vs a vendor durable runtime
 
-A common mistake: picking a workflow engine for fire-and-forget work, or a queue for multi-step durability.
+This engine is for **agent** workflows — ordered, checkpointed, human-escalatable task graphs that
+spawn agents and call tools, run from a shell, and resume from a checkpoint. For high-volume,
+crash-durable *service* workflows (billing reconciliation, encoding pipelines, retried external APIs)
+reach for a hosted durable runtime instead:
 
-| Need | Use |
-|------|-----|
-| "Send this email, don't care when" | Queue (SQS, Upstash QStash, Trigger.dev task) |
-| "Run this Monday 9am" | Cron (vendor or your own scheduler) |
-| "Charge card → if success, ship → wait 24h → check arrival → notify" | **Workflow engine** |
-| "Build, test, deploy on PR merge" | GitHub Actions |
-| "Process this webhook NOW, retry on fail" | Workflow engine OR webhook handler with manual retry queue |
+| Tool | Best for | Notes |
+|------|----------|-------|
+| **Inngest** | TypeScript-native, event-driven service workflows | Typed functions; replay, fan-out, throttle built in. Free tier covers most. |
+| **Trigger.dev** | Jobs-style durable work | v3 is a real durable runtime; pick if Inngest's DX doesn't fit. |
+| **Temporal** | Polyglot, enterprise scale, complex sagas | Heaviest setup; worth it at very high volume with cross-language teams. |
+| **AWS Step Functions** | AWS-only, JSON-defined workflows | Verbose for complex logic; fine if already deep in AWS. |
+| **GitHub Actions** | CI/CD orchestration only | Build/test/deploy chains — not runtime workflows. |
+| **Cron + queue (DIY)** | Simple, low-volume async | Fine for "send digest Mondays 9am"; avoid for multi-step. |
 
-## Cross-references
+Rule of thumb: **agent task graph that needs checkpoints + human escalation → this engine;
+fire-and-forget → a queue; crash-durable multi-step service work → a vendor runtime.**
 
-- [`frameworks/notifications/README.md`](../notifications/README.md) — sends triggered from workflow steps must be idempotent (rule 1)
-- [`frameworks/secrets-management/README.md`](../secrets-management/README.md) — payload-secret rule (rule 2)
-- [`frameworks/observability/README.md`](../observability/README.md) — workflow failures route to Sentry like everything else
-- [`docs/threat-model.md`](../../docs/threat-model.md) — workflow-event tampering is a real threat (validate event shape + signature)
+## Anti-patterns
+
+- ❌ Editing the engine to add a workflow — author a `workflow.json` against the schema instead.
+- ❌ Hard-coding a Slack/PagerDuty/dashboard URL in a `.sh` — pass it by env (see authoring step 5).
+- ❌ Putting a credential in `workflow.json`, a checkpoint, or an outcome report.
+- ❌ A non-idempotent step behind `onFailure: retry` (double-charge, double-ship).
+- ❌ Treating `~/.claude/state/workflows` as durable — ship outcomes to a `reporting` destination.
+
+## Relation to other frameworks
+
+- [`observability`](../observability/README.md) — workflow failures route to Sentry like everything
+  else; the no-secrets-in-payload rule is shared.
+- [`audit-trail`](../audit-trail/README.md) — a workflow that mutates a tracked resource still writes
+  an `audit_events` row; the outcome report is the run record, not the audit record.
+- [`gates`](../gates/README.md) — the shell files here pass the same shell ratchet every consumer runs.
+- [`notifications`](../notifications/README.md) — escalation/outcome sends must be idempotent (rule 1).
+- [`secrets-management`](../secrets-management/README.md) — the no-secrets-in-definition rule (rule 2).

@@ -39,14 +39,15 @@ Full data with `lastRun` and `findings` in `methodology-registry.json`.
 
 ## Running the engine
 
-```bash
-# claude-hub skill
-/methodology-audit
+Drive the cycle from the registry: pick the highest-priority method that hasn't run
+recently, run it, then record the result back into the registry (`lastRun` + `findings`).
+A consuming repo wires this up with a small helper — a `methodology-cycle` script or a
+`methodology-audit` skill — exposing:
 
-# Manual via script
-bash ~/claude-hub/scripts/methodology-cycle.sh next     # which method to run next
-bash ~/claude-hub/scripts/methodology-cycle.sh record   # record a run result
-bash ~/claude-hub/scripts/methodology-cycle.sh history  # view recent cycle history
+```text
+next      # which method to run next (highest priority × staleness)
+record    # record a run result against a method
+history   # view recent cycle history
 ```
 
 ## Project adaptation

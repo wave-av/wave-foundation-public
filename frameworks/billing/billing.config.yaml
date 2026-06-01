@@ -1,0 +1,24 @@
+# Reference billing.config.yaml — wave-dispatch's PROVEN settlement topology, the frameworks/billing example.
+# Applied live 2026-05-31 (Stripe catalog in acct_1TBPJZDZp3QOCf5P; reconcile drift 0; real test invoice
+# asserted == code model). Validated by validate-billing.py against billing-config.schema.json. See README.md.
+
+product: dispatch
+
+# Ledger-only until a deliberate, customer-ready go-live (recommended live default: stripe). The live Stripe
+# catalog exists; flipping to `stripe` is the money-moving step, gated on founder sign-off + a real customer.
+authoritative: none
+
+# Metronome rates the same usage but never collects (dual-readiness; Stripe acquired Metronome, APIs unmerged).
+shadows: [metronome]
+mirror: supabase
+
+passthrough_unit_decimal: "100"     # THE CENTS INVARIANT. Σ(amount_usd) × 100 = invoice cents.
+idempotency: per-decision-uuid      # one UUID per decision → ledger + authoritative + shadows + mirror
+
+# Metronome org OAuth connection not yet established (solutions@metronome.com) → Metronome stays shadow-only.
+metronome_connection_gated: true
+
+meters:
+  - name: decisions
+    rate_cents: 0.01                # $0.0001/decision × 100
+    aggregation: sum

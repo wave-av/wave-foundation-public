@@ -129,6 +129,32 @@ jobs:
             echo "::notice::no vendored Claude-API linter ($LINT) — run consume.sh to adopt the standard. Skipping."
           fi
 
+  claude-api-cache:
+    # Prompt-caching gate — inherited by every consuming spoke via foundation-gate.yml, so the
+    # "stable system prefix served uncached at full input price" class (the wave.online workspace had
+    # ZERO cache use: 77/80 call sites missing cache_control) is caught everywhere with zero per-spoke
+    # wiring. Especially load-bearing as WSC is decomposed into per-product spoke repos.
+    #
+    # SINGLE SOURCE OF TRUTH: runs the canonical script the repo VENDORS at
+    # .foundation/frameworks/claude-api/lint-cache-control.sh — the same script devs hit at commit time.
+    # No-op if not vendored yet. Advisory on rollout (continue-on-error); harden to blocking after soak.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Claude-API prompt-caching gate (vendored script)
+        run: |
+          LINT=.foundation/frameworks/claude-api/lint-cache-control.sh
+          if [ -f "$LINT" ]; then
+            echo "running vendored Claude-API cache-control linter"
+            bash "$LINT"
+          else
+            echo "::notice::no vendored Claude-API cache linter ($LINT) — run consume.sh to adopt the standard. Skipping."
+          fi
+
   verify-routes:
     # URL convention enforcement (docs/conventions/url-naming.md).
     # No-op for repos with no wrangler.toml. Scans `pattern = "..."` and `routes = [...]` lines for
@@ -181,3 +207,54 @@ jobs:
           if [ "$any" = 0 ]; then echo "no wrangler.toml — verify-routes is a no-op"; exit 0; fi
           if [ "$fail" = 0 ]; then echo "verify-routes passed"; fi
           exit "$fail"
+
+  billing-contract:
+    # Billing & Settlement contract gate (frameworks/billing). Validates every billing.config.yaml against
+    # billing-config.schema.json + the pinned invariants — above all the CENTS INVARIANT (passthrough must be
+    # "100"), the 100x-under-bill class. Schema-driven (validate-billing.py reads the consts FROM the schema),
+    # so it can't disagree with the contract. No-op for repos without a billing.config.yaml. Advisory on
+    # rollout (continue-on-error) so a new gate can't break every spoke at once; harden to blocking after soak.
+    # The commit-time twin (registry gate) is the documented follow-up in frameworks/gates/registry.yaml.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with: { python-version: "3.11" }
+      - name: Billing & Settlement contract gate
+        run: |
+          python3 -m pip install --quiet pyyaml
+          # Foundation runs its OWN canonical validator; spokes vendor it via consume.sh. No-op without a config.
+          if [ -f frameworks/billing/validate-billing.py ]; then
+            python3 frameworks/billing/validate-billing.py
+          else
+            echo "::notice::no frameworks/billing/validate-billing.py — run consume.sh to adopt the billing contract. Skipping."
+          fi
+
+  # ── SCA: dependency review (advisory) ───────────────────────────────────────
+  # Software-composition analysis on PRs: flags newly-introduced dependencies with known
+  # vulnerabilities or disallowed licenses, by diffing the dependency graph (base ↔ head). Inherited
+  # org-wide via this reusable gate (@v1) — every consumer gets SCA on its PRs with no per-repo wiring.
+  #
+  # Deliberately ADVISORY (not a merge-blocker) for now: it only runs on pull_request (the action needs
+  # PR base/head to diff), and continue-on-error keeps it from failing repos that have no dependency
+  # graph / GHAS enabled. Promote a repo's `gate / dependency-review` to a required check once its graph
+  # is on and the signal is clean — exactly the #94 "required checks matched to real CI" principle:
+  # turn it on where it actually runs, never require a check that can't report.
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Dependency review (vulns + licenses)
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

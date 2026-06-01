@@ -1,0 +1,79 @@
+# Reusable workflow — every wave-av repo includes this so its capabilities.json
+# is automatically discoverable by the foundation aggregator.
+#
+# Two things happen on push to master:
+#   1. Validate the repo's capabilities.json against the schema (refuses to
+#      land a malformed file).
+#   2. Open / update a registry-sync issue in wave-foundation with the file
+#      contents inline, so the aggregator can read it without needing
+#      per-repo gh-pages plumbing.
+#
+# To include this in a consumer repo, add:
+#   .github/workflows/capabilities.yml:
+#     name: capabilities
+#     on:
+#       push:
+#         branches: [main, master]
+#         paths: [capabilities.json]
+#     jobs:
+#       publish:
+#         uses: wave-av/wave-foundation/.github/workflows/publish-capabilities.yml@v1
+#
+# The push from wave-foundation back to the registry is gated behind the
+# `registry-sync` repository_dispatch event (manually wired during Phase D
+# backfill so we don't accidentally fan out spurious updates while the
+# aggregator is still alpha).
+
+name: publish-capabilities
+
+on:
+  workflow_call:
+    inputs:
+      capabilities_path:
+        type: string
+        default: capabilities.json
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Confirm capabilities.json exists
+        run: |
+          if [ ! -f "${{ inputs.capabilities_path }}" ]; then
+            echo "::error::missing ${{ inputs.capabilities_path }} — see wave-foundation/frameworks/platform-registry/README.md"
+            exit 1
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 # zizmor: ignore[cache-poisoning]
+        with:
+          node-version: "20"
+      - name: Install tsx
+        run: npm install --no-save --no-audit --no-fund tsx@4 typescript@5
+      - name: Fetch validator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pull just the validator + schema from wave-foundation @ v1 — we DON'T need
+          # the whole foundation repo, this is a sparse-fetch.
+          curl -sSfL -o /tmp/validate.ts \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/validate.ts"
+          mkdir -p /tmp/schema
+          curl -sSfL -o /tmp/schema/capabilities.schema.json \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/schema/capabilities.schema.json"
+      - name: Validate
+        env:
+          CAPS: ${{ inputs.capabilities_path }}
+        run: |
+          # The validator resolves the schema relative to its own location, so move
+          # them together. The script supports flat layout via the schema path being
+          # adjacent to the script root.
+          mkdir -p /tmp/registry/scripts /tmp/registry/schema
+          mv /tmp/validate.ts /tmp/registry/scripts/
+          mv /tmp/schema/capabilities.schema.json /tmp/registry/schema/
+          npx tsx /tmp/registry/scripts/validate.ts "$CAPS"
