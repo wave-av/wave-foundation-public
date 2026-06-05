@@ -40,3 +40,8 @@ Two independent layers — pick what you need:
 Because this is an automated mirror, fixes generally land in the upstream source and flow
 here on the next sync. Issues and discussion are welcome; direct PRs to mirrored paths will
 be overwritten by the next sync.
+
+---
+
+<!-- wave-standard-footer -->
+<sub><b><a href="https://wave.online">wave.online</a></b> &nbsp;·&nbsp; <a href="https://docs.wave.online">Docs</a> &nbsp;·&nbsp; <a href="https://dev.wave.online">Developers</a> &nbsp;·&nbsp; <a href="https://agents.wave.online">For agents</a></sub>
