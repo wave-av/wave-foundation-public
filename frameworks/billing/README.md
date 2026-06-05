@@ -16,7 +16,7 @@ identical across four systems that each have their own console where someone cou
 
 ## The reference implementation
 
-`wave-av/wave-dispatch` is the proven reference — built, tested, and **applied live** (2026-05-31):
+`wave-av/wave-dispatch` is the proven reference — built and tested end-to-end:
 
 | Concern | Reference artifact (in wave-dispatch) |
 |---|---|
@@ -63,7 +63,7 @@ emitMeter(decision)
 - **Authoritative** = the one provider that issues the collectible invoice. Recommended default: **Stripe-native**.
 - **Shadow** = a provider that rates the same usage but never collects (`collect=false`), so you can compare
   invoices and flip authority with a config change, not a migration. Recommended: **Metronome** as shadow
-  (Stripe acquired Metronome; APIs aren't merged; staying dual-ready hedges the unknown winner).
+  (dual-ready lets you compare a second rating engine without committing collection to it).
 - **Mirror** = Supabase `dispatch.usage_events` (PK = the idempotency key, `merge-duplicates` upsert so each
   provider's emit merges its own `*_ref` into one row). Audit/analytics only — it never prices.
 - Flip authority with `BILLING_AUTHORITATIVE` / `BILLING_SHADOW` env vars. **Default `BILLING_AUTHORITATIVE=none`
@@ -83,7 +83,7 @@ Everything is API-creatable EXCEPT the provider's org-level connection:
 - **Stripe:** account exists; the key (sk_live) is the connection.
 - **Metronome:** the org→Stripe OAuth connection is **dashboard/OAuth-only** (the API enum excludes it). It is
   API-*readable* via `listConfiguredBillingProviders → delivery_method_id` (the one proof the human step
-  happened). Prod connection = `solutions@metronome.com`; sandbox auto-maps to Stripe TEST.
+  happened). The prod connection is established through Metronome support; sandbox auto-maps to Stripe TEST.
 
 Gate any prod-Metronome-billing-of-record behind that connection + a prod key. Until then Metronome is shadow.
 
