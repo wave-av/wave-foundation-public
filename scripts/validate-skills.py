@@ -18,7 +18,11 @@ unapproved category prefix) are WARNINGS and do not fail unless --strict.
 
 Usage: python3 scripts/validate-skills.py [roots...]   (default: plugin/skills staging/skills)
 """
-import sys, os, re, glob, subprocess
+import sys
+import os
+import re
+import glob
+import subprocess
 
 NAME_RE = re.compile(r"^[a-z0-9_]+(?:-[a-z0-9_]+)*$")
 TOPKEY_RE = re.compile(r"^([A-Za-z_][\w-]*):")
