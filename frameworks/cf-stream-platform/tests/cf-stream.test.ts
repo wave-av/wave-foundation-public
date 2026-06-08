@@ -11,7 +11,7 @@ function fetchFail(status: number): typeof fetch {
 
 const validProvision = {
   tenant_id: "acme",
-  cf_account_id: "abcdef0123456789abcdef0123456789",
+  cf_account_id: "0123456789abcdef0123456789abcdef", // # guard:allow non-secret placeholder account id (test fixture)
   cf_api_token: "a".repeat(40),
 } as const;
 
@@ -59,7 +59,7 @@ describe("provisionTenantStream", () => {
 describe("createTenantUpload", () => {
   const validUpload = {
     tenant_id: "acme",
-    cf_account_id: "abcdef0123456789abcdef0123456789",
+    cf_account_id: "0123456789abcdef0123456789abcdef", // # guard:allow non-secret placeholder account id (test fixture)
     cf_api_token: "a".repeat(40),
   } as const;
 

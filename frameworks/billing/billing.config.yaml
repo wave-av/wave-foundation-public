@@ -1,5 +1,5 @@
 # Reference billing.config.yaml — wave-dispatch's PROVEN settlement topology, the frameworks/billing example.
-# Applied live 2026-05-31 (Stripe catalog in acct_1TBPJZDZp3QOCf5P; reconcile drift 0; real test invoice
+# Applied live 2026-05-31 (Stripe catalog in the live Stripe account; reconcile drift 0; real test invoice
 # asserted == code model). Validated by validate-billing.py against billing-config.schema.json. See README.md.
 
 product: dispatch
