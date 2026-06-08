@@ -134,8 +134,8 @@ Requires the `mid-conversation-system-2026-04-07` beta header. Because it lands 
 
 ## WAVE note — caching on the gateway/chassis frontier
 
-WAVE inference does **not** call Anthropic directly — it routes through the 5-tier Token Leveragizer
-(`local_30b → Vercel AI Gateway → OpenRouter → direct Anthropic → human`), see
+WAVE inference does **not** call Anthropic directly — it routes through the multi-tier Token Leveragizer
+(`local_30b → AI Gateway → OpenRouter → direct Anthropic → human`), see
 [`../model-routing/README.md`](../model-routing/README.md). Two consequences for caching:
 
 - **Caching applies on the frontier passthrough.** When a call escalates to the Anthropic frontier (via
@@ -179,6 +179,6 @@ reference engine (`../model-routing/local_offload/shim/engine.py`) already cache
 ## Related
 
 - [`README.md`](./README.md) — model strings, thinking/effort, request surface
-- [`../model-routing/README.md`](../model-routing/README.md) — the 5-tier router caching rides on
+- [`../model-routing/README.md`](../model-routing/README.md) — the multi-tier router caching rides on
 - [`../claude-config/`](../claude-config/) — Claude Code / MCP-secret wiring (different facet)
 - [`../observability/README.md`](../observability/README.md) — verify cache metrics flow to ops

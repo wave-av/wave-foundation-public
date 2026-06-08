@@ -1,7 +1,7 @@
 # git-cliff — generate CHANGELOG.md from Conventional Commit history.
 # Fits wave-foundation: no package.json, consumed by tag/SHA pin, commits already conventional
-# (enforced by semantic-pr.yml). Changesets is NOT used here (it's for npm-publishing repos like
-# wave-surfer-connect). Run: git cliff -o CHANGELOG.md
+# (enforced by semantic-pr.yml). Changesets is NOT used here (it's for npm-publishing repos). Run:
+# git cliff -o CHANGELOG.md
 [changelog]
 header = "# Changelog\n\nAll notable changes to wave-foundation. Consumed by tag/SHA pin.\n"
 body = """

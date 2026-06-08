@@ -18,6 +18,10 @@ The `methodology_docs_resolve` dogfood gate enforces that non-null doc paths poi
 
 Full doc: [`wave-execution.md`](./wave-execution.md). Propose → atomize → dependency-graph → wave-execute → audit. The build pattern this foundation uses on itself.
 
+### 🟦 25. Done Is A Trigger {#done-is-a-trigger}
+
+Full doc: [`done-is-a-trigger.md`](./done-is-a-trigger.md). **Done is a trigger, not a terminal** — declaring a task/PR/issue complete fires a mandatory five-lens DONE→AUDIT pass (edge cases · adjacent gaps · hostile review · uplevel · completeness) before the work may rest. The human-judgment complement to the [improvement loop](../improvement-loop/README.md); the every-completion form of Wave Execution's audit step. Gate candidate: `pr_audit_pass_recorded`.
+
 ### 🟢 1. Single Source of Truth {#single-source-of-truth}
 
 Every fact/rule/value lives in exactly one canonical place. Duplicates are either pointers (cross-references) or harvested copies in `staging/_external/` (fidelity principle, SYSTEM.md §10). Gates: `methodology_docs_resolve`, `env_registry_coverage`, `audiences_taxonomy_valid`.

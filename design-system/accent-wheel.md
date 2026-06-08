@@ -64,6 +64,10 @@ node validators/contrast.mjs 0.78 0.15 330          # → PASS/FAIL gate
 
 One row per branded subdomain so two products never share an accent. Add yours when you scaffold.
 
+> **Default accent** (`@wave-av/spoke-chassis` `tokens.css.ts`, #164) = the developer/API blue
+> `oklch(0.78 0.15 220)` → `#00ccf9`. This is the apex (wave.online) + Gateway accent and the value a
+> spoke inherits until it claims its own category accent below.
+
 | Subdomain | Product | Family | OKLCH | hex | Tier |
 |-----------|---------|--------|-------|-----|------|
 | `dispatch.wave.online` | Dispatch | AI / routing | `oklch(0.78 0.15 171)` | `#16d6aa` | vivid |

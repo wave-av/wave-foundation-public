@@ -209,7 +209,7 @@ prefix invalidates **everything after it**.
 
 ## Related
 
-- [`model-routing/README.md`](../model-routing/README.md) — the 5-tier Token Leveragizer (direct API = tier 4)
+- [`model-routing/README.md`](../model-routing/README.md) — the multi-tier Token Leveragizer (direct API = tier 4)
 - [`model-routing/champions.md`](../model-routing/champions.md) — the model-string source of truth
 - [`model-routing/local_offload/`](../model-routing/local_offload/) — runnable Anthropic shim on `:8088`; its frontier endpoint targets the hosted Anthropic API
 - [`claude-config/`](../claude-config/) — Claude Code / MCP-secrets wiring via Doppler (different facet)

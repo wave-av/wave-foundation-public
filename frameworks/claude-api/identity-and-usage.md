@@ -161,13 +161,13 @@ creation. A service account becomes active in a workspace only once added to its
 - Never hardcode a model in code — route via config (default `claude-opus-4-8`).
 - Static keys, where unavoidable (tier 3), are Doppler-injected and on the rotation schedule; treat any
   committed `sk-ant-*` as leaked → rotate immediately.
-- Build tasks: per-user WIF provisioning + attribution in wave-gateway (#19); usage/cost → Leveragizer
+- Build tasks: per-user WIF provisioning + attribution in the gateway service (#19); usage/cost → Leveragizer
   budgets + 80%/100% alerts (#20).
 
 ## Related
 
 - [`gateway-integration.md`](./gateway-integration.md) — the egress seam; who rewrites what, in what order.
-- [`frameworks/model-routing/README.md`](../model-routing/README.md) — five-tier escalation + budget caps.
+- [`frameworks/model-routing/README.md`](../model-routing/README.md) — multi-tier escalation + budget caps.
 - [`frameworks/secrets-management`](../secrets-management/) — Doppler injection + rotation for tier-3 keys.
 
 ---

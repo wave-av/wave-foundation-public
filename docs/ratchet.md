@@ -85,7 +85,7 @@ that defeats the ratchet.
 
 ## Native + polyglot languages (C/C++/Rust/Go/Ruby)
 
-Native repos (`wave-transports` and the per-protocol native bindings — see
+Native repos (the WAVE native libraries and per-protocol bindings — see
 [polyrepo-topology](../rules/polyrepo-topology.md)) ship C/C++/Rust addons. Those languages need the
 ratchet from day one, so the recipe is added **here** (the governance root) and inherited via the
 shared workflow — not reinvented per repo.
@@ -106,8 +106,8 @@ default, fail-closed on a missing tool, identical four flags.
 ### Rollout (when native code lands)
 
 These two jobs are wired but **dormant** in wave-foundation (no native files). Do NOT add them to
-required checks here — there's nothing to observe. Instead, in the FIRST native repo
-(`wave-transports`): consume this workflow, populate the baselines once
+required checks here — there's nothing to observe. Instead, in the FIRST native repo:
+consume this workflow, populate the baselines once
 (`scripts/cpp-check-changed.sh --update-baseline`, `scripts/rust-check-changed.sh --update-baseline`,
 commit both), run **warn-only for 5 consecutive PRs**, then flip to required — exactly the rollout the
 shell/python ratchets followed (§"Rollout: observed, then enforced"). Never leave a `|| true` on a
@@ -120,14 +120,14 @@ exercise honestly:
 
 - **TODO(clang-tidy oracle):** cppcheck is the fast per-PR gate; `clang-tidy` is the deeper oracle but
   needs `compile_commands.json` from a real CMake/Bazel build. Wire it as a **scheduled** job (per
-  §Redundancy) in `wave-transports` once that repo produces a compile database. A new script
+  §Redundancy) in the native repo once that repo produces a compile database. A new script
   `scripts/clang-tidy-changed.sh` would mirror `cpp-check-changed.sh` against the compile DB.
 - **TODO(toolchain pinning):** pin the exact `cppcheck` apt version and the Rust toolchain
   (`rust-toolchain.toml` + clippy version) in the consuming native repo so baseline signatures stay
   stable across runner-image bumps — the same pinning shellcheck-py/ruff use here. Cannot pin
   meaningfully until a real build defines the supported toolchain.
 - **TODO(per-crate scoping):** the Rust script lints every workspace on each run; once
-  `wave-transports` has multiple crates, scope clippy to only the workspaces whose files changed (cheap
+  the native repo has multiple crates, scope clippy to only the workspaces whose files changed (cheap
   with cargo metadata) to keep CI fast. Premature to optimize against a non-existent layout.
 
 ## Redundancy

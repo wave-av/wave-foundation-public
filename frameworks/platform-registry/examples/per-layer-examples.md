@@ -15,17 +15,17 @@ Other Layer 0 patterns:
 ## Layer 1 — Edge
 
 - **wave-realtime-edge**: `exposes.apis = [{ protocol: "webrtc-whip", endpoint: "https://rt.wave.online/whip" }, { protocol: "webrtc-whep", endpoint: "https://rt.wave.online/whep" }]`, `events.publishes = [{ topic: "rtc.session.opened", transport: "x402-meter" }]`.
-- **wave-gateway**: `exposes.apis` with every public endpoint enumerated, each with an `openapiRef`.
+- **api-gateway**: `exposes.apis` with every public endpoint enumerated, each with an `openapiRef`.
 
 ## Layer 2 — Bridges
 
 - **wave-bridge-edge**: `consumes.thirdParty = [{ service: "audinate-dante", licenseGated: true }, { service: "vizrt-ndi", licenseGated: true }]`, `exposes.apis` for each protocol bridge endpoint.
-- **wave-transports**: `lifecycle: "ga"` for SRT, `"alpha"` for the dante subtree until #157 ships.
+- **transport-library**: `lifecycle: "ga"` for SRT, `"alpha"` for the dante subtree until #157 ships.
 
 ## Layer 3 — Local
 
 - **wave-agent**: `exposes.hardwareDrivers` enumerates every supported edge device family.
-- **wave-flash**: `exposes.cli = [{ binary: "wave-flash" }]`.
+- **flash-cli**: `exposes.cli = [{ binary: "flash" }]`.
 
 ## Layer 4 — Hardware
 

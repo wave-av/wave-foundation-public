@@ -14,7 +14,7 @@ benefit-led; **agent** docs are terse and contract-led (the human⇄agent taxono
 |---|:--:|:--:|:--:|---|
 | `README.md` | ✅ | ✅ | human | Entry point. Public: no internal hostnames/secrets/dashboards. |
 | `AGENTS.md` | ✅ | ✅ | agent | How an agent should work in this repo (build/test/gates/PR rules). Org default covers repos without one. |
-| `SECURITY.md` | ✅ | ✅ | human | Vuln-reporting policy (private: internal channel; public: security@wave.online + disclosure window). |
+| `SECURITY.md` | ✅ | ✅ | human | Vuln-reporting policy (private: internal channel; public: <security@wave.online> + disclosure window). |
 | `CODEOWNERS` | ✅ | ✅ | — | Review routing; backs the CODEOWNERS-review gate. |
 | `.coderabbit.yaml` | ✅ | ✅ | — | Review automation (auto_approve within limits). |
 | `CHANGELOG.md` | ✅ | ✅ | human | [Keep a Changelog](https://keepachangelog.com); `Unreleased` section maintained. |
@@ -50,6 +50,13 @@ approving reviews, satisfied by the CodeRabbit auto-approve bot for a solo org).
 | Dependency review (PR) | security | — | ✅ |
 | Build provenance / SLSA on release | supply-chain | — | ✅ |
 | License/SBOM check | compliance | — | ✅ |
+| Ambiguity Gate (PR-body checklist + advisory CI) | advisory | ➖ | ➖ |
+
+`advisory` = surfaced, never merge-blocking. The **Ambiguity Gate**
+([`frameworks/ambiguity-gate/`](../ambiguity-gate/)) is a PR-template checklist plus an advisory
+`semantic-pr.yml` step (`continue-on-error`, per `DECISIONS.md` ADR-006) that flags a missing gate or a
+hard-to-reverse / public↔private-boundary action with no linked ADR. Recommended for every repo with a PR
+template; not a required status check.
 
 ## Public-repo P0 (exposure risk)
 

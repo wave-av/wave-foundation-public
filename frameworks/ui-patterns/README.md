@@ -8,6 +8,12 @@ framework is the *standard* — the rule that there is **one** implementation an
 > Promoted from the spoke chassis after the pattern proved out in 2+ spokes
 > (`wave-www` + `wave-developer`). See `frameworks/harvest/audit-2026-05-31.md` for the
 > audit that cleared promotion (tasks #120 harvest → #121 promote).
+>
+> **Design re-based on the apex (#164).** The apex (`wave-www`, wave.online) is now the canonical
+> DESIGN STANDARD: its tokens, humanist-sans typography, gateway-blue accent (`#00ccf9`), and
+> marketing component CSS were promoted back into `@wave-av/spoke-chassis` (`tokens.css.ts` +
+> `chassis.css.ts`). Spokes adopt **v0.2.0** to inherit the apex design — see
+> `design-system/chassis.md`.
 
 ## The one rule
 

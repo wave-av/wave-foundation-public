@@ -1,5 +1,5 @@
 # Semantic PR Title — enforce Conventional Commits v1.0.0 on PR titles.
-# Harvested from wave-surfer-connect and genericized (runner -> ubuntu-latest). Advisory by design
+# Harvested from an internal WAVE repo and genericized (runner -> ubuntu-latest). Advisory by design
 # (continue-on-error) — guidance, not a merge blocker. Any WAVE repo can copy this as-is.
 name: Semantic PR Title
 
@@ -63,3 +63,17 @@ jobs:
           if echo "$PR_BODY" | grep -qE '^BREAKING CHANGE:'; then HAS_BREAKING=true; fi
           echo "has_breaking=$HAS_BREAKING" >> "$GITHUB_OUTPUT"
           if [ "$HAS_BREAKING" = "true" ]; then echo "::notice::This PR contains breaking changes"; fi
+
+      # Ambiguity Gate (advisory). Surfaces a missing gate checklist, or a hard-to-reverse /
+      # public<->private-boundary box checked without a linked ADR. ADVISORY by design (DECISIONS.md
+      # ADR-006 — gates are additive + advisory, never a merge block); both the job and this step set
+      # continue-on-error, and the script's exit 2 is turned into a ::notice::, so it never fails the run.
+      # The tree was already checked out by the parity step above. See frameworks/ambiguity-gate/README.md.
+      - name: Ambiguity Gate (advisory)
+        continue-on-error: true
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! bash frameworks/ambiguity-gate/check-pr-ambiguity.sh "$PR_BODY"; then
+            echo "::notice::Ambiguity Gate (advisory): see the step log + frameworks/ambiguity-gate/README.md"
+          fi

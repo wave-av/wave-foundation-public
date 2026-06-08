@@ -1,6 +1,6 @@
 # File-Size Gate (two-tier)
 
-Harvested from wave-surfer-connect `.claude/rules/35-file-size/`. Small files = fast AI reads = composable.
+Harvested from an internal WAVE repo's `.claude/rules/35-file-size/`. Small files = fast AI reads = composable.
 
 | Gate | Limit | Behavior |
 |------|-------|----------|

@@ -47,12 +47,15 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-          persist-credentials: false
+          fetch-tags: true          # pull ALL tags via the AUTHENTICATED checkout, so the check below
+          persist-credentials: false  # needs no post-checkout `git fetch origin` — that died on
+                                      # "could not read Username" (creds not persisted) so the safety
+                                      # check never actually ran (always errored red on a v1 advance).
       - name: Major tag points at the newest release + gate self-tests pass
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          git fetch --quiet --tags --force origin
+          # tags are already present from the authenticated checkout — no unauthenticated `git fetch`.
           newest="$(git tag -l "${TAG}.*.*" --sort=-v:refname | grep -E "^${TAG}\.[0-9]+\.[0-9]+$" | head -1 || true)"
           [ -n "$newest" ] || { echo "::error::no full ${TAG}.Y.Z release tag exists — a moving ${TAG} should never lead a real release"; exit 1; }
           if [ "$(git rev-parse "${TAG}^{commit}")" != "$(git rev-parse "${newest}^{commit}")" ]; then

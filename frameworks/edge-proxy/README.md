@@ -91,8 +91,21 @@ skip (e) and the edge becomes an open relay.
    surface's `test/`, point its `worker` import at the surface entry, and run it under
    `@cloudflare/vitest-pool-workers`. All five invariants must pass before deploy.
 4. Keep the copies byte-identical to this reference (modulo the placeholder
-   substitution) — divergence is the drift this framework exists to kill. A CI hash
-   check against this reference is the cheap way to enforce that.
+   substitution) — divergence is the drift this framework exists to kill. Enforce it
+   with [`verify-vendored.sh`](verify-vendored.sh), which applies your four
+   substitutions to the reference and diffs the result against your vendored copy:
+
+   ```yaml
+   # in the surface's CI (the reference travels in via consume.sh's pinned .foundation/ copy)
+   - name: edge-proxy drift check
+     run: |
+       .foundation/frameworks/edge-proxy/verify-vendored.sh \
+         --vendored src \
+         --origin-url 'env.WAVE_WWW_ORIGIN' --product www --protocol https --spoke-name wave-www
+   ```
+
+   It fails (exit 1) on any difference beyond the four placeholders, so a copy can't
+   silently drift from the standard.
 
 ## Anti-patterns
 

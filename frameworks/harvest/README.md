@@ -11,7 +11,7 @@ shipped back out to every consumer.
 Harvest a pattern when **all four** are true:
 
 1. It's proven in **2+ spokes** (not just one — single-repo patterns aren't generic enough).
-2. It's **cross-product** (no `WAVE`, `wave-surfer`, prod Supabase IDs, internal service
+2. It's **cross-product** (no `WAVE`, private product names, prod Supabase IDs, internal service
    names baked in — those parts must be removable).
 3. It's a **pattern**, not an instance (a workflow, a schema shape, a script that
    takes config — not a one-off configuration).

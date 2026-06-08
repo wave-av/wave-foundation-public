@@ -44,7 +44,7 @@
         "required": ["name", "rate_cents"],
         "properties": {
           "name": {
-            "enum": ["decisions", "stream_minutes", "bandwidth_gb", "storage_gb", "ai_tokens", "voice_minutes", "transcription_minutes", "compute_minutes", "api_calls"],
+            "enum": ["decisions", "stream_minutes", "bandwidth_gb", "storage_gb", "storage_minutes", "ai_tokens", "voice_synthesis_minutes", "voice_minutes", "transcription_minutes", "compute_minutes", "api_calls"],
             "description": "Canonical meter (frameworks/pricing registry)."
           },
           "rate_cents": {

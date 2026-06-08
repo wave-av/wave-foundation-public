@@ -1,0 +1,24 @@
+# WAVE positioning gate — GitHub Actions CI (copy into a repo's .github/workflows/).
+# Twin of the copywriting gate (copy-audit.yml). Enforces the identity SSOT
+# (frameworks/positioning/positioning.ts) on every PR touching user-facing copy.
+name: positioning-gate
+on:
+  pull_request:
+    paths:
+      - "**/*.tsx"
+      - "**/*.ts"
+      - "**/*.md"
+      - "**/*.mdx"
+permissions:
+  contents: read
+jobs:
+  positioning-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history for --changed diff vs base
+      - name: Run WAVE positioning gate
+        run: |
+          chmod +x frameworks/positioning/positioning-check.sh
+          bash frameworks/positioning/positioning-check.sh --changed

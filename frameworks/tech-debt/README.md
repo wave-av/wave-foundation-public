@@ -4,7 +4,7 @@ Systematic approach to clearing technical debt before public/major launches.
 
 ## Source
 
-Harvested from `wave-surfer-connect/.claude/plans/tech-debt-remediation/`. This is a live plan template — adapt phases for your project's specific debt inventory.
+Harvested from an internal WAVE repo's `.claude/plans/tech-debt-remediation/`. This is a live plan template — adapt phases for your project's specific debt inventory.
 
 ## Structure
 

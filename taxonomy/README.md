@@ -1,7 +1,7 @@
 # Taxonomies
 
 The canonical classification systems used across WAVE projects. Harvested from
-wave-surfer-connect (grounded in real category distributions, not invented) and made
+an internal WAVE repo (grounded in real category distributions, not invented) and made
 product-agnostic. These are the shared vocabularies that keep skills, agents, products,
 labels, and docs consistent across repos.
 

@@ -20,7 +20,7 @@
 #   HOOK_BREAKER_DIR        where counters live (default: ${TMPDIR:-/tmp}/claude/hook-failures)
 #   PROTECTED_HOOKS_EXTRA   extra ":"-separated substrings to treat as security-critical
 #
-# Provenance: hardened in wave-surfer-connect after a flaky hook stalled a session (E9).
+# Provenance: hardened in an internal WAVE repo after a flaky hook stalled a session (E9).
 set +e
 
 HOOK_NAME="${1:?Usage: hook-circuit-breaker-wrapper.sh <hook-name> <command> [args...]}"

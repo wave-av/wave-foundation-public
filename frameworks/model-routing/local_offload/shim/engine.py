@@ -29,7 +29,10 @@ class Engine(Protocol):
 
 
 def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
-    data = json.dumps(payload).encode()
+    # frameworks/claude-api (cache diagnostics): serialize DETERMINISTICALLY (sort_keys) so the same
+    # logical request — especially tool input_schemas — is byte-identical across turns. Non-deterministic
+    # key ordering is a documented `tools_changed` cache-miss cause; sort_keys removes it at the source.
+    data = json.dumps(payload, sort_keys=True).encode()
     req = urllib.request.Request(
         url, data=data, method="POST", headers={"Content-Type": "application/json", **headers}
     )
@@ -40,7 +43,9 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: float) -> dict:
 def _post_json_stream(url: str, payload: dict, headers: dict, timeout: float) -> dict:
     # frameworks/claude-api: stream large generations and accumulate SSE into one Messages object
     # (stdlib equivalent of .get_final_message()), so callers see a single non-streamed response shape.
-    data = json.dumps(payload).encode()
+    # sort_keys (same as _post_json): the stream path serves max_tokens>16000 requests, which must ALSO
+    # be byte-deterministic across turns or large requests reintroduce the `tools_changed` cache miss.
+    data = json.dumps(payload, sort_keys=True).encode()
     req = urllib.request.Request(
         url, data=data, method="POST",
         headers={"Content-Type": "application/json", "Accept": "text/event-stream", **headers},
@@ -115,9 +120,13 @@ class AnthropicEngine:
         self.model = model
         self.api_key_env = api_key_env
         self.timeout = timeout
-        # frameworks/claude-api: pin a current API version so Opus 4.8 features (adaptive thinking,
-        # output_config.effort, 1h cache ttl) are exposed; the legacy 2023-06-01 may not surface them.
-        self.anthropic_version = anthropic_version or os.environ.get("ANTHROPIC_VERSION", "2024-10-22")
+        # frameworks/claude-api: anthropic-version. 2023-06-01 is the current GA version and — VERIFIED
+        # against live claude-opus-4-8 (HTTP 200) — exposes EVERY Opus 4.8 feature: adaptive thinking,
+        # output_config.effort, prompt caching (incl. 1h ttl), task_budget. Per-feature opt-ins ride the
+        # anthropic-beta HEADER, not a new version. ⚠ "2024-10-22" is NOT a valid anthropic-version →
+        # the API 400s ("not a valid version") on every request; it was confused with the
+        # computer-use-2024-10-22 *beta*. Do not "bump" this to a date unless the API docs list it.
+        self.anthropic_version = anthropic_version or os.environ.get("ANTHROPIC_VERSION", "2023-06-01")
 
     def complete(self, req: dict) -> dict:
         model = req.get("model") or self.model
@@ -138,9 +147,29 @@ class AnthropicEngine:
         # frameworks/claude-api: adaptive thinking is the ONLY supported form on Opus 4.8/4.7
         # (thinking={type:'enabled',budget_tokens:N} returns 400 — budget_tokens fully removed).
         # output_config.effort steers reasoning (low|medium|high|max|xhigh; default high; max/xhigh are Opus-tier).
+        oc: dict[str, Any] = {}
         if is_opus:
             payload["thinking"] = {"type": "adaptive"}
-            payload["output_config"] = {"effort": req.get("effort") or "high"}
+            oc["effort"] = req.get("effort") or "high"
+            # task_budget (beta): an ADVISORY token budget for a full agentic loop — the model sees a
+            # running countdown and self-moderates (fewer/consolidated tool calls, less preamble), distinct
+            # from max_tokens (a hard per-response ceiling the model can't see). Min 20,000; needs the
+            # task-budgets beta header (added below). Pass req["task_budget"] as an int (total tokens) or a
+            # full {"type":"tokens","total":N} dict. Merged INTO output_config so it coexists with effort.
+            tb = req.get("task_budget")
+            if tb is not None:
+                oc["task_budget"] = tb if isinstance(tb, dict) else {"type": "tokens", "total": int(tb)}
+        # frameworks/claude-api: structured outputs — output_config.format constrains the response to a
+        # JSON schema AT THE API LEVEL (no regex parsing, no "respond in valid JSON" prompting, no malformed-
+        # JSON retry loops). Unlike effort/task_budget this is NOT Opus-only, so it lives outside the is_opus
+        # guard. Pass req["response_format"] as the full format object, e.g.
+        # {"type": "json_schema", "schema": {...}}; forwarded verbatim to output_config.format (the current
+        # API shape — top-level output_format is deprecated). Replaces assistant-prefill JSON coaxing (400s on Opus 4.6+).
+        fmt = req.get("response_format")
+        if fmt is not None:
+            oc["format"] = fmt
+        if oc:
+            payload["output_config"] = oc
 
         # frameworks/claude-api: prompt caching — put ONE cache_control breakpoint on the last stable prefix
         # block so a repeated prefix is cached (~0.1x reads vs full $5/MTok input). Render order is
@@ -168,7 +197,43 @@ class AnthropicEngine:
                 tools[-1]["cache_control"] = cc
             payload["tools"] = tools
 
+        # frameworks/claude-api: optional efficiency/capability levers — forwarded ONLY when the caller
+        # sets them, so the default request shape is byte-for-byte unchanged.
+        #  - service_tier: "flex" trades latency for a lower price on latency-tolerant calls; "priority"
+        #    buys guaranteed capacity. Omit (or "auto") for standard — a cheap lever for batchy traffic.
+        #  - context_management: server-side context editing (e.g. clear_tool_uses_20250919) drops stale
+        #    tool results from a long agentic loop so you stop re-sending them → fewer input tokens/turn.
+        if req.get("service_tier"):
+            payload["service_tier"] = req["service_tier"]
+        if req.get("context_management"):
+            payload["context_management"] = req["context_management"]
+
+        # frameworks/claude-api: cache diagnostics (beta) — opt-in. Pass req["diagnostics"] =
+        # {"previous_message_id": <prior response id | None>} to have the API report WHERE the prompt
+        # prefix diverged from the previous request (model_changed / system_changed / tools_changed /
+        # messages_changed), turning a silent cache miss into an attributable root cause. First turn passes
+        # None (opt in, nothing to compare); each later turn passes the prior response id. The beta header
+        # is auto-added below. The miss reason is surfaced on the response as out["diagnostics"].
+        diagnostics = req.get("diagnostics")
+        if diagnostics is not None:
+            payload["diagnostics"] = diagnostics
+
         headers = {"anthropic-version": self.anthropic_version}
+        # betas: caller-supplied beta headers (e.g. compaction `compact-2026-01-12`, context-editing,
+        # files-api) joined into anthropic-beta — keeps the engine forward-compatible without hardcoding
+        # a header per feature. Accepts a list/tuple or a pre-joined string.
+        _b = req.get("betas")
+        betas = [_b] if isinstance(_b, str) else list(_b or [])
+        # task_budget is beta — auto-add its opt-in header so callers don't have to remember it (the
+        # budget is silently ignored without the header). Idempotent if the caller already listed it.
+        if req.get("task_budget") is not None and is_opus and "task-budgets-2026-03-13" not in betas:
+            betas.append("task-budgets-2026-03-13")
+        # cache diagnostics is beta — auto-add its opt-in header when the caller requested diagnostics
+        # (the diagnostics field is silently ignored without it). Idempotent if already listed.
+        if diagnostics is not None and "cache-diagnosis-2026-04-07" not in betas:
+            betas.append("cache-diagnosis-2026-04-07")
+        if betas:
+            headers["anthropic-beta"] = ",".join(betas)
         key = _key(self.api_key_env)
         if key:
             headers["x-api-key"] = key
@@ -191,6 +256,10 @@ class AnthropicEngine:
             out["stop_reason"] = stop
             if stop == "refusal":
                 out["refusal_category"] = (raw.get("stop_details") or {}).get("category")
+        # frameworks/claude-api: surface cache diagnostics so the caller (or router telemetry) can attribute
+        # a prefix divergence (model/system/tools/messages_changed) instead of guessing from a zero cache read.
+        if "diagnostics" in raw:
+            out["diagnostics"] = raw["diagnostics"]
         return out
 
 

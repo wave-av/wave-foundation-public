@@ -10,9 +10,16 @@ Every product gets:
 
 - `--bg` — near-black background
 - `--fg` — primary text (high contrast on bg)
+- `--fg-strong` — high-contrast headings / brand wordmark (`#fff`)
 - `--acc` — **one accent color** (CTAs, links, active states, progress)
 - `--warn` — amber/yellow for warnings
 - `--dim` — muted secondary text, borders, placeholders
+- `--card` — panel/card surface (one step up from `--bg`)
+- `--line` — hairline borders / dividers
+
+> Promoted from the apex (wave.online) design (#164): `--fg-strong`, `--card`, and `--line` are now
+> first-class semantic tokens. The chassis component CSS references these instead of hardcoding
+> `#fff` / `#0e141b` / `#1c2733`, so a whole surface re-themes from the one `:root` block.
 
 **One accent.** No gradients on the primary accent — gradients are reserved for the WAVE master brand
 mark only. Each product's favicon is the WAVE wave mark recolored **flat** to its accent. The
@@ -20,7 +27,12 @@ one-accent rule enforces visual focus — users know exactly where to look.
 
 ## Typography discipline
 
-`font-family: ui-monospace, "SF Mono", Menlo, monospace` everywhere that reinforces developer/agent tool identity. Switch to humanist sans for consumer-facing products only.
+**Default = humanist sans** (`ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`).
+Promoted from the apex (wave.online, #164): the WAVE consumer + platform surface is humanist sans —
+it reads as a product people use, not just a dev tool. **Monospace is retained only for `code` and
+`pre`** (ascii diagrams / snippets), where it carries developer/agent-tool meaning. (The original
+"mono everywhere" rule applied to the early terminal-native dispatch portal; the apex superseded it
+as the design standard.)
 
 ## Accessibility baseline
 

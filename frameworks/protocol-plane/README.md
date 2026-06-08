@@ -52,8 +52,8 @@ All six are **open-source by design** (the "Build on WAVE" credibility argument 
 |---|---|---|
 | MoQ | WebTransport is HTTP/3 native; relays are JS | wave-moq-edge live, Phase-B XL real impl pending |
 | WebRTC SFU | JS LiveKit room mgmt + ICE | wave-realtime-edge (TBD) |
-| http→x402 | pure JS auth/scope/meter | wave-gateway live |
-| Discovery | KV-backed registry of cross-layer endpoints | wave-gateway live |
+| http→x402 | pure JS auth/scope/meter | gateway live |
+| Discovery | KV-backed registry of cross-layer endpoints | gateway live |
 
 ### Layer 2 — Bridges (CF Containers — GA 2026-04-13)
 

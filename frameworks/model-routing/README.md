@@ -1,6 +1,9 @@
 # Model Routing
 
-Five-tier escalation for any AI inference call. Implements the **Token Leveragizer** principle: every call starts at the cheapest tier that can plausibly satisfy it and only escalates on explicit failure or quality signal.
+Tiered escalation for any AI inference call. Implements the **Token Leveragizer** principle: every call starts at the cheapest tier that can plausibly satisfy it and only escalates on explicit failure or quality signal.
+
+> **⚠️ Implemented vs designed (2026-06-01 audit).** The runnable cascade today is **3 tiers**:
+> `local → local-heavy → direct-frontier (Anthropic)` — see the chassis profiles (`local_offload/profiles/profiles.default.json`), `dispatch.yaml`, and `edge-router`. The **Vercel AI Gateway** (tier 2) and **human** (tier 5) rungs below are **designed, not wired**, and OpenRouter is currently a flat leaderboard/fallback provider, not an ordered cost rung. **Tier 2 needs a roadmap decision:** WAVE exited Vercel for Cloudflare (see the Vercel→CF migration), so the gateway rung should become **Cloudflare AI Gateway** or be dropped — it must not stay "Vercel AI Gateway." Until then, treat the table below as the target architecture, not the live path.
 
 | Tier | Substrate | When to use | Cost | Latency |
 |------|-----------|-------------|------|---------|

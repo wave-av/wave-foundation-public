@@ -67,7 +67,9 @@ repos:
     hooks:
       - id: codespell
         args: [-L, "crate,nin,ba,fo,strack,ist"]
-        exclude: '\.(lock|svg)$'
+        # .map = generated minified sourcemaps (base64 mappings codespell misreads as typos:
+        # AAChE->cache, DAA->DATA, CACL->CALC). They're not prose — never spell-check them.
+        exclude: '\.(lock|svg|map)$'
 
   - repo: local
     hooks:
@@ -148,3 +150,15 @@ repos:
         files: '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh|json|ya?ml)$'
         exclude: '^staging/'
         pass_filenames: true
+
+      # Thinking-capability routing gate: a ccr config must strip the `thinking` param for
+      # non-reasoning models (Ollama 400s otherwise). Foundation has no ccr config, so this no-ops
+      # here; spokes (e.g. wave-dispatch) point entry at the vendored copy and validate their own
+      # config/ccr/config.json against docs/model-thinking-capability.json. Rule:
+      # rules/local-llm-thinking-capability.md.
+      - id: model-thinking-capability
+        name: model thinking-capability routing (ccr non-reasoning models strip thinking)
+        entry: frameworks/gates/scripts/check-model-thinking-capability.sh
+        language: script
+        files: '^(config/ccr/config\.json|docs/model-thinking-capability\.json)$'
+        pass_filenames: false

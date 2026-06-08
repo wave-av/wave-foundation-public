@@ -7,7 +7,7 @@ name: ratchet (lint-debt)
 # Flipped from warn-only on 2026-05-28. Failure on a NEW finding in changed files blocks the PR.
 # cpp + rust + go + ruby are PRESENT-BUT-DORMANT: this repo has zero native/Go/Ruby files, so each
 # gate is a clean no-op (skips when nothing of that language changed) — NOT a faked green. cpp/rust
-# activate when wave-transports lands native code; go/ruby activate when a consumer repo with .go/.rb
+# activate when a WAVE repo lands native code; go/ruby activate when a consumer repo with .go/.rb
 # adopts the gate (e.g. the wave-av/sdks polyglot SDKs). Observe each clean for 5 PRs before adding
 # to required checks (same rollout the shell/python ratchets followed). See docs/ratchet.md.
 
@@ -46,6 +46,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           export PATH="$HOME/.local/bin:$PATH"
+          [ -f scripts/shell-check-changed.sh ] || { echo "::notice::shell ratchet script absent (public mirror) — skipping"; exit 0; }
           bash scripts/shell-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
 
   python:
@@ -64,7 +65,9 @@ jobs:
       - name: Python ratchet
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/python-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+        run: |
+          [ -f scripts/python-check-changed.sh ] || { echo "::notice::python ratchet script absent (public mirror) — skipping"; exit 0; }
+          bash scripts/python-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
 
   cpp:
     name: cpp ratchet
@@ -90,7 +93,9 @@ jobs:
       - name: Cpp ratchet
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/cpp-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+        run: |
+          [ -f scripts/cpp-check-changed.sh ] || { echo "::notice::cpp ratchet script absent (public mirror) — skipping"; exit 0; }
+          bash scripts/cpp-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
 
   rust:
     name: rust ratchet
@@ -111,7 +116,9 @@ jobs:
       - name: Rust ratchet
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+        run: |
+          [ -f scripts/rust-check-changed.sh ] || { echo "::notice::rust ratchet script absent (public mirror) — skipping"; exit 0; }
+          bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
 
   go:
     name: go ratchet
@@ -131,7 +138,9 @@ jobs:
       - name: Go ratchet
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/go-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+        run: |
+          [ -f scripts/go-check-changed.sh ] || { echo "::notice::go ratchet script absent (public mirror) — skipping"; exit 0; }
+          bash scripts/go-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
 
   ruby:
     name: ruby ratchet
@@ -157,4 +166,5 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
+          [ -f scripts/ruby-check-changed.sh ] || { echo "::notice::ruby ratchet script absent (public mirror) — skipping"; exit 0; }
           bash scripts/ruby-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
