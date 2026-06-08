@@ -1,0 +1,125 @@
+# Reusable workflow — runs the platform-registry validator + drift checks on
+# every PR in a consumer repo. Wired up by each repo's foundation-gate or a
+# dedicated capabilities.yml.
+#
+# Adoption (consumer side):
+#
+#   .github/workflows/capabilities.yml:
+#     name: capabilities
+#     on:
+#       pull_request:
+#       push: { branches: [main, master] }
+#     jobs:
+#       validate:
+#         uses: wave-av/wave-foundation/.github/workflows/validate-capabilities.yml@v1
+#         with:
+#           capabilities_path: capabilities.json
+#           check_package_version: true
+#           check_cli_binaries: true
+#           check_cross_refs: true
+#
+# The workflow is a no-op if capabilities.json is missing — repos opt in by
+# adding the file. Once added, drift fails the build.
+
+name: validate-capabilities
+
+on:
+  workflow_call:
+    inputs:
+      capabilities_path:
+        type: string
+        default: capabilities.json
+      check_package_version:
+        type: boolean
+        default: true
+      check_cli_binaries:
+        type: boolean
+        default: true
+      check_cross_refs:
+        type: boolean
+        default: true
+      check_honesty:
+        type: boolean
+        default: true
+      honesty_enforce:
+        # ADVISORY by default — a vaporware claim is surfaced but does not block. Flip to true
+        # per-repo (or fleet-wide once green) to make it a hard failure. See #291.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Skip if no capabilities.json
+        id: present
+        env:
+          CAPS_PATH: ${{ inputs.capabilities_path }}
+        run: |
+          if [ -f "$CAPS_PATH" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no capabilities.json — repo hasn't opted into platform-registry yet"
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 # zizmor: ignore[cache-poisoning]
+        if: steps.present.outputs.present == 'true'
+        with:
+          node-version: "20"
+      - name: Install tsx
+        if: steps.present.outputs.present == 'true'
+        run: npm install --no-save --no-audit --no-fund tsx@4
+      - name: Fetch validator + schema + drift checker from foundation@v1
+        if: steps.present.outputs.present == 'true'
+        run: |
+          mkdir -p /tmp/registry/scripts /tmp/registry/schema
+          curl -sSfL -o /tmp/registry/scripts/validate.ts \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/validate.ts"
+          curl -sSfL -o /tmp/registry/scripts/check-drift.ts \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/check-drift.ts"
+          curl -sSfL -o /tmp/registry/scripts/check-honesty.ts \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/check-honesty.ts"
+          curl -sSfL -o /tmp/registry/schema/capabilities.schema.json \
+            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/schema/capabilities.schema.json"
+      - name: Schema validation
+        if: steps.present.outputs.present == 'true'
+        env:
+          CAPS_PATH: ${{ inputs.capabilities_path }}
+        run: npx tsx /tmp/registry/scripts/validate.ts "$CAPS_PATH"
+      - name: Drift checks
+        if: steps.present.outputs.present == 'true'
+        env:
+          CAPS_PATH: ${{ inputs.capabilities_path }}
+          CHECK_VERSION: ${{ inputs.check_package_version }}
+          CHECK_BINARIES: ${{ inputs.check_cli_binaries }}
+          CHECK_CROSS: ${{ inputs.check_cross_refs }}
+        run: |
+          args=("$CAPS_PATH")
+          [ "$CHECK_VERSION" = "true" ] && args+=("--check-package-version")
+          [ "$CHECK_BINARIES" = "true" ] && args+=("--check-cli-binaries")
+          [ "$CHECK_CROSS" = "true" ] && args+=("--check-cross-refs")
+          npx tsx /tmp/registry/scripts/check-drift.ts "${args[@]}"
+      - name: Honesty check (metered/auth claims must be backed by enforcement)
+        # The anti-vaporware gate (#291): a capabilities.json that claims metered:true or a real
+        # `auth` over an API must back it in source (usage-emit / x402 / credential check) OR be a
+        # genuine gateway-fronted spoke (consumes the configured gateway repo + reads the x-wave-* principal).
+        # ADVISORY by default; flip honesty_enforce:true per-repo once the manifest is clean.
+        if: steps.present.outputs.present == 'true' && inputs.check_honesty
+        continue-on-error: ${{ inputs.honesty_enforce == false }}
+        env:
+          CAPS_PATH: ${{ inputs.capabilities_path }}
+          # The control-plane gateway repo a spoke must declare to count as gateway-fronted. Supplied
+          # via an org-level Actions variable so the published framework stays org-agnostic; if unset,
+          # check-honesty.ts falls back to a generic placeholder default.
+          WAVE_GATEWAY_REPO: ${{ vars.WAVE_GATEWAY_REPO }}
+        run: npx tsx /tmp/registry/scripts/check-honesty.ts "$CAPS_PATH" --root .

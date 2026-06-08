@@ -46,6 +46,17 @@ secret-scan).
 
 `build-on-wave/` — the strategic claim that **everything WAVE customers can build, we built first.** Maps each public SDK + spoke + operator app to (a) something WAVE runs in production, and (b) something a customer or AI agent can replicate from public APIs. Includes the canonical "signal everywhere" landing-page spec (`signal-everywhere.md`) and a machine-readable repo manifest (`repo-manifest.json`) listing every Layer-0/1/2/3/4 surface with license + SDK + role. Pairs with `protocol-plane/` (the five-layer architecture this argument rests on) and `pricing/` (same model across every layer).
 
+## Ambiguity gate
+
+`ambiguity-gate/` — ambiguity is a STOP condition: **DETECT → RESEARCH (against ground truth) → RECORD an
+ADR → ACT**, never act on an assumption. Six trigger conditions (which-of-N-canonical, generated/sync
+target, live-vs-stub, public↔private boundary, doc-says-X-code-says-Y, hard-to-reverse) and a "reuse
+first — check `DECISIONS.md`" rule. Ships the seeded ADR log (`DECISIONS.md`, the canonical cross-repo ADR
+home), the *why* (`natural-systems.md` — the physics/biology/viral mechanisms the gate copies), and
+`check-pr-ambiguity.sh` (advisory, mirrors the `validate-conventional-title.sh` one-source pattern). Wired
+into the PR template + an advisory `semantic-pr.yml` step (`continue-on-error`, per `DECISIONS.md` ADR-006).
+The error-correction sibling to `agent-lease/`'s collision-avoidance.
+
 ## Claude API standard
 
 `claude-api/` — how every WAVE surface uses the Claude API correctly. Default model `claude-opus-4-8`.
@@ -56,6 +67,18 @@ routing (`local-inference.md`). `COVERAGE.md` maps the entire Anthropic doc surf
 covered / N-A / TODO; `reference/` is a pinned doc snapshot (refresh via `refresh-docs.sh`). Pairs with
 `model-routing/` — the Leveragizer tier this standard's frontier hop runs through. Vendored into spokes by
 `consume.sh` like every other framework here.
+
+## Concurrent-agent lease
+
+`agent-lease/` — a git-native, atomic lease so multiple Claude sessions/agents on the same repo stop
+**colliding silently** (two release PRs for one version, two branches editing one file, a retargeted PR
+base stranding a stacked PR — all real near-misses). A lease is a `refs/agent-leases/<slug>` ref created
+via `POST /git/refs`, which returns `422` if it already exists, so two agents racing the same claim can't
+both win. The custom ref namespace isn't fetched by `git fetch`, so leases never clutter branch/tag lists;
+expired leases (default 120m TTL) auto-prune on the next `claim`/`list`. It's a **coordination aid, not a
+hard mutex** — a live lease means "coordinate before overlapping," always `release` when done. Usage:
+`bash .foundation/frameworks/agent-lease/lease.sh {list|claim <slug>|release <slug>|mine|prune|doctor}`
+(`claim` exits `3` if already held). Vendored into spokes by `consume.sh` like every other framework here.
 
 ## Dogfood law
 

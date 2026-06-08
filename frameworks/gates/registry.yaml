@@ -77,6 +77,16 @@ gates:
     ci_job: claude-api-shape
     spoke_advisory: true
 
+  - id: model-thinking-capability
+    name: model thinking-capability routing (ccr non-reasoning models strip thinking)
+    script: frameworks/gates/scripts/check-model-thinking-capability.sh
+    vendored: .foundation/frameworks/gates/scripts/check-model-thinking-capability.sh
+    stage: pre-commit
+    files: '^(config/ccr/config\.json|docs/model-thinking-capability\.json)$'
+    pass_filenames: false
+    ci_job: claude-api-shape
+    spoke_advisory: true
+
 # Coverage of the 9 required CI checks (task #30), by mirror class:
 #   PORTABLE gates (above — registry-emitted, inherited by every spoke):
 #     file-size ✓, claude-api-shape ✓, model-string ✓, conventional-title ✓ (semantic-pr parity)

@@ -7,8 +7,8 @@
 
 ## Principles
 
-1. **Route, don't dial direct.** Every Claude call goes through the 5-tier router in
-   [`frameworks/model-routing`](../model-routing/README.md) (local_30b → Vercel AI Gateway → OpenRouter →
+1. **Route, don't dial direct.** Every Claude call goes through the multi-tier router in
+   [`frameworks/model-routing`](../model-routing/README.md) (local_30b → AI Gateway → OpenRouter →
    direct Anthropic → human). A direct `ANTHROPIC_API_KEY` call that skips the gateway loses
    observability + billing aggregation and is an anti-pattern.
 2. **Never hardcode a model name in code.** The exact ID comes from routing config, not a string literal
@@ -58,7 +58,7 @@ the cheaper tiers first.
 | Tier | Substrate | Claude role |
 |------|-----------|-------------|
 | 1. Local | Mac Studio 30B | — (no Claude; first attempt) |
-| 2. Vercel AI Gateway | `VERCEL_AI_GATEWAY_API_KEY` | `claude-sonnet-4-6` default; `claude-opus-4-8` for declared reasoning calls |
+| 2. AI Gateway | `VERCEL_AI_GATEWAY_API_KEY` | `claude-sonnet-4-6` default; `claude-opus-4-8` for declared reasoning calls |
 | 3. OpenRouter | fallback | same IDs, redundant provider |
 | 4. Direct Anthropic | `ANTHROPIC_API_KEY` | only when 2+3 down OR a feature is gateway-uncatalogued |
 | 5. Human | Slack/PagerDuty | all model tiers failed |
@@ -145,7 +145,7 @@ Every spoke that calls Claude SHOULD cache its stable prefix. Mechanics:
 
 ## Related
 
-- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the 5-tier escalation this plugs into
+- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the multi-tier escalation this plugs into
 - [`frameworks/model-routing/champions.md`](../model-routing/champions.md) — which models populate each tier
 - [`frameworks/claude-config/`](../claude-config/) — Claude Code / MCP-secrets wiring via Doppler (sibling facet)
 - [`frameworks/observability/README.md`](../observability/README.md) — capture `stop_reason:refusal` + cache-miss as ops signals

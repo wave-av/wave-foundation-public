@@ -28,7 +28,7 @@ This is the inverse of Rule 1 — it keeps the registry from going stale.
 
 ### Rule 3: When two repos disagree, foundation HEAD wins
 
-If a consumer's `capabilities.json` says it calls `wave-gateway /v3/feed/{slug}` but the gateway's `capabilities.json` only exposes `/v4/feed/{slug}`, the aggregator emits a `consumes-without-exposes` finding. CI in the consumer repo blocks until it's reconciled.
+If a consumer's `capabilities.json` says it calls the gateway's `/v3/feed/{slug}` but the gateway's `capabilities.json` only exposes `/v4/feed/{slug}`, the aggregator emits a `consumes-without-exposes` finding. CI in the consumer repo blocks until it's reconciled.
 
 ### Rule 4: Agents read on session start
 

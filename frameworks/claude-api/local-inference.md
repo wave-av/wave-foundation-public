@@ -193,7 +193,7 @@ curl https://api.anthropic.com/v1/messages \
   attribution (the *same* path sovereign tenants use).
 - [`model-matrix.md`](./model-matrix.md) — per-model frontier constraints (the 400s the local 30B
   doesn't know about).
-- [`../model-routing/README.md`](../model-routing/README.md) — five-tier Leveragizer + budget caps.
+- [`../model-routing/README.md`](../model-routing/README.md) — multi-tier Leveragizer + budget caps.
 - [`../model-routing/CHASSIS.md`](../model-routing/CHASSIS.md) — runnable local-offload router/shim.
 - [`../model-routing/champions.md`](../model-routing/champions.md) — champions registry + the 7-axis
   capability graph (which axes have a local champion vs escalate-to-Claude).

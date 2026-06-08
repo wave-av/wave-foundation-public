@@ -16,7 +16,7 @@ that request lands on*. This doc says **who rewrites what, in what order, on the
 substrate and the substrate decides the egress path:
 
 ```text
-call site  →  local_offload shim (:8088)  →  [local 30B | Vercel AI Gateway | OpenRouter | direct Anthropic]  →  human
+call site  →  local_offload shim (:8088)  →  [local 30B | AI Gateway | OpenRouter | direct Anthropic]  →  human
                      ▲ frontier endpoint = hosted Anthropic
 ```
 
@@ -33,7 +33,7 @@ call site  →  local_offload shim (:8088)  →  [local 30B | Vercel AI Gateway 
 | Step | Substrate | Owns | This doc's concern |
 |------|-----------|------|--------------------|
 | 1 | local 30B (Studio) | trivial/first-draft turns | shim serves locally; never reaches Anthropic |
-| 2 | Vercel AI Gateway | metered multi-provider egress | rewrite MUST already be applied before here |
+| 2 | AI Gateway | metered multi-provider egress | rewrite MUST already be applied before here |
 | 3 | OpenRouter | redundancy | same rewrite contract |
 | 4 | **frontier = hosted Anthropic** | Opus/Sonnet/Haiku | rewrite is mandatory here or it 400s |
 | 5 | human | all tiers failed | n/a |
@@ -129,7 +129,7 @@ The neutral body is portable across tiers (local 30B / Sonnet / Haiku); the Opus
 ## Related
 
 - [`README.md`](./README.md) — the full Claude API request contract (model IDs, thinking/effort, caching, request surface).
-- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the 5-tier Leveragizer; owns tier choice + model selection + retry/escalation.
+- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the multi-tier Leveragizer; owns tier choice + model selection + retry/escalation.
 - [`frameworks/model-routing/local_offload/`](../model-routing/local_offload/) — runnable Anthropic-shaped shim (`:8088`); its frontier `upstream` is the hosted Anthropic API.
 - [`frameworks/observability/README.md`](../observability/README.md) — wrap frontier failures in `notifyOps`; never throw from the observe path.
 - `frameworks/claude-config/` — Claude Code / MCP / Doppler secrets (sibling facet; cross-link, do not duplicate).

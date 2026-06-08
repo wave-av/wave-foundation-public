@@ -1,0 +1,34 @@
+# Spoke adoption: paste THIS into `.github/workflows/never-done.yml` of any consuming repo.
+# It calls the foundation's reusable never-done workflow so the audit-prompt comment logic
+# stays in lockstep with the foundation (no per-repo drift).
+#
+# Pin choice:
+#   @v1     — moving major tag. Use AFTER v1 has been advanced to include never-done.yml
+#             (the workflow landed on master in PR #324; until v1 advances past that commit,
+#             @v1 will not resolve never-done.yml).
+#   @master — always current. Use until v1 includes never-done.yml. Slight drift risk if
+#             foundation lands a breaking change on master, but the never-done workflow is
+#             intentionally stable.
+#
+# The grant of `pull-requests: write` is REQUIRED for the comment poster — a reusable
+# workflow cannot elevate permissions the caller didn't grant.
+#
+# Advisory only (`continue-on-error: true` is set on the foundation-side job).
+# See rules/never-done.md for the standing principle.
+
+name: Never-Done audit invitation
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    uses: wave-av/wave-foundation/.github/workflows/never-done.yml@master  # switch to @v1 once advanced
+    permissions:
+      contents: read
+      pull-requests: write

@@ -52,13 +52,13 @@ history   # view recent cycle history
 
 ## Project adaptation
 
-The registry is tuned for tooling/config repos. For product repos (wave-surfer-connect), adapt:
+The registry is tuned for tooling/config repos. For product repos, adapt:
 
 - Replace method 14 (Ollama Model Quality) with relevant domain-specific method
 - Raise threshold for "run recently" (larger teams move faster)
 - Add product-specific categories (payments, streaming, auth)
 
-wave-surfer-connect has its own more advanced methodology engine (`wave-pipeline-discipline` skill) with separate implementation.
+Some product repos run their own more advanced methodology engine (a pipeline-discipline skill) with a separate implementation.
 
 ## Dogfood law
 

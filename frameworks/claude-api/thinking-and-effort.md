@@ -137,7 +137,7 @@ against Opus 4.8/4.7 returns `400 invalid_request_error`.
 
 ## Related
 
-- [`../model-routing/README.md`](../model-routing/README.md) — 5-tier Token Leveragizer; all inference routes here first
+- [`../model-routing/README.md`](../model-routing/README.md) — multi-tier Token Leveragizer; all inference routes here first
 - [`../model-routing/CHASSIS.md`](../model-routing/CHASSIS.md) — runnable `local_offload` shim (Anthropic `:8088` frontier endpoint)
 - [`../observability/README.md`](../observability/README.md) — wrap `stop_reason`/4xx handling in `notifyOps`, never throw on the path
 - `../claude-config/` — Claude Code / MCP-secret (Doppler) wiring (sibling facet; may land separately)

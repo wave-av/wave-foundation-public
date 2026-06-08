@@ -70,7 +70,10 @@ jobs:
           fetch-depth: 0 # need tags for the version<->tag comparison
           persist-credentials: false
       - name: Check version consistency
-        run: python3 scripts/check-version-sync.py
+        # Graceful no-op on the public mirror, where this script isn't in the open-core allowlist.
+        run: |
+          [ -f scripts/check-version-sync.py ] || { echo "::notice::version-sync script absent (public mirror) — skipping"; exit 0; }
+          python3 scripts/check-version-sync.py
   claude-api-shape:
     # Dogfood the Claude-API request-shape linter against this repo (the chassis under
     # frameworks/model-routing/local_offload talks to the API). Blocking here — foundation enforces
@@ -114,4 +117,26 @@ jobs:
         with:
           node-version: "22"
       - name: Manifest ↔ chassis WAVE_PRODUCTS parity
-        run: node staging/golden-paths-scaffolds/new-subdomain-app/validators/check-registry.mjs
+        run: |
+          [ -f staging/golden-paths-scaffolds/new-subdomain-app/validators/check-registry.mjs ] || { echo "::notice::registry validator absent (public mirror) — skipping"; exit 0; }
+          node staging/golden-paths-scaffolds/new-subdomain-app/validators/check-registry.mjs
+  capabilities-honesty:
+    # Dogfood the anti-vaporware honesty gate (#291): foundation runs the check it ships for the
+    # fleet. BLOCKING here (foundation enforces its own rules) — first via --self-test (the fixtures
+    # that pin metered/auth-without-enforcement detection + the gateway-fronted escape), then against
+    # this repo's own capabilities.json (clean: no metered/auth API claims).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install tsx
+        run: npm install --no-save --no-audit --no-fund tsx@4
+      - name: Honesty check self-test (fixtures)
+        run: npx tsx frameworks/platform-registry/scripts/check-honesty.ts --self-test
+      - name: Honesty check on own capabilities.json
+        run: npx tsx frameworks/platform-registry/scripts/check-honesty.ts capabilities.json --root .

@@ -12,7 +12,7 @@
    ([`../model-routing/champions.json`](../model-routing/champions.json)). This doc is the migration
    table that keeps that config — and any harvested call site — pointed at live models.
 2. **Route through the gateway first.** Direct Anthropic is **tier 4**. Calling it without going
-   through Vercel AI Gateway → OpenRouter loses observability + billing aggregation.
+   through AI Gateway → OpenRouter loses observability + billing aggregation.
 3. **Never append a date suffix to an alias.** `claude-opus-4-8` is the canonical string. A
    date-suffixed alias (`claude-opus-4-6-20260205`) is an anti-pattern — it pins a snapshot and rots.
 4. **The frozen harvest is frozen.** Anything under `staging/_external/` is a verbatim third-party
@@ -143,7 +143,7 @@ Per the live Anthropic prompt-caching doc:
 
 ## Related
 
-- [`../model-routing/README.md`](../model-routing/README.md) — the 5-tier Token Leveragizer; **resolves which model + which tier**. This doc only covers the request surface once a Claude model is chosen.
+- [`../model-routing/README.md`](../model-routing/README.md) — the multi-tier Token Leveragizer; **resolves which model + which tier**. This doc only covers the request surface once a Claude model is chosen.
 - [`../model-routing/local_offload/`](../model-routing/local_offload/) — runnable chassis; its Anthropic shim on `:8088` targets the hosted Anthropic API as its frontier endpoint.
 - [`../claude-config/`](../claude-config/) — Claude **Code** / MCP-secrets wiring via Doppler (different facet; may land separately).
 - [`../observability/README.md`](../observability/README.md) — never forward an API key into Sentry/Linear `extra`.

@@ -40,11 +40,11 @@ These run as WAVE infrastructure, but the public SDKs expose every operation the
 
 | Surface | Repo (impl) | Public contract |
 |---|---|---|
-| Gateway (Layer 1, control plane) | [wave-gateway](https://github.com/wave-av/wave-gateway) | OpenAPI at `https://api.wave.online/openapi.json` + `@wave-av/sdk` |
+| Gateway (Layer 1, control plane) | _(internal control plane)_ | OpenAPI at `https://api.wave.online/openapi.json` + `@wave-av/sdk` |
 | MoQ edge (Layer 1) | [wave-moq-edge](https://github.com/wave-av/wave-moq-edge) | IETF MoQ draft-17 (open spec) |
 | WebRTC SFU edge (Layer 1) | [wave-realtime-edge](https://github.com/wave-av/wave-realtime-edge) | W3C WebRTC + LiveKit protocol |
 | Protocol bridges (Layer 2) | [wave-bridge-edge](https://github.com/wave-av/wave-bridge-edge) | Per-protocol APIs (SRT / NDI / Dante / OMT / AV1 / AV2 / ffmpeg) |
-| Transport library (cross-layer) | [wave-transports](https://github.com/wave-av/wave-transports) | C++ API; AES67 fallback (open) + DAL wrapper (license-gated) |
+| Transport library (cross-layer) | _(internal)_ | C++ API; AES67 fallback (open) + DAL wrapper (license-gated) |
 | Local agent (Layer 3) | [wave-agent](https://github.com/wave-av/wave-agent) | Discovery RPC documented in `protocol-plane/` |
 | Hardware certification (Layer 4) | [wave-certify](https://github.com/wave-av/wave-certify) | Open protocol-correctness battery |
 

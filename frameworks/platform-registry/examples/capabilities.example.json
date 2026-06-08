@@ -15,7 +15,7 @@
   },
   "consumes": {
     "waveProducts": [
-      { "repo": "wave-av/wave-gateway", "endpoint": "/feed/{slug}" }
+      { "repo": "your-org/api-gateway", "endpoint": "/feed/{slug}" }
     ],
     "thirdParty": [
       { "service": "stun.l.google.com", "licenseGated": false }

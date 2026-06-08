@@ -110,11 +110,11 @@ jobs:
     #
     # SINGLE SOURCE OF TRUTH, no drift: it runs the canonical script the repo VENDORS via consume.sh
     # at .foundation/frameworks/claude-api/lint-request-shape.sh — the exact same script devs hit at
-    # commit time. No-op (not a failure) if the repo hasn't vendored it yet. Advisory on rollout
-    # (continue-on-error) so a new gate can't break every spoke at once; harden to blocking after soak.
+    # commit time. No-op (not a failure) if the repo hasn't vendored it yet. BLOCKING as of 2026-06-04 —
+    # flipped from advisory after a clean soak (all 18 active spokes green on this gate). A repo that
+    # hasn't vendored the linter still no-ops; one that vendored it must keep a valid Opus-4.x request shape.
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -137,10 +137,10 @@ jobs:
     #
     # SINGLE SOURCE OF TRUTH: runs the canonical script the repo VENDORS at
     # .foundation/frameworks/claude-api/lint-cache-control.sh — the same script devs hit at commit time.
-    # No-op if not vendored yet. Advisory on rollout (continue-on-error); harden to blocking after soak.
+    # No-op if not vendored yet. BLOCKING as of 2026-06-04 — flipped from advisory after a clean soak
+    # (all 18 active spokes green). Every vendored Claude request with a system prefix must cache it.
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -208,6 +208,48 @@ jobs:
           if [ "$fail" = 0 ]; then echo "verify-routes passed"; fi
           exit "$fail"
 
+  voice:
+    # WAVE voice gate (frameworks/copywriting/voice-and-tone.md §human⇄agent taxonomy): user-facing
+    # marketing/docs copy says "people" / second person, NOT "humans" (othering). Scans only the
+    # user-facing files CHANGED in this PR (.ts/.tsx/.md/.mdx, excluding tests), so it gates NEW copy
+    # and never retroactively fails unswept files. ALLOWED: the "no human in the loop" idiom; the GDPR
+    # / EU-AI-Act legal terms "human review"/"human oversight"; "human-readable"; typography words;
+    # identifiers/const/id-slugs; and code comments. No `${{ github.* }}` interpolation (shell only).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Voice gate (people, not humans)
+        run: |
+          base=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
+          base="origin/${base:-main}"
+          git fetch origin --quiet 2>/dev/null || true
+          fail=0; any=0
+          is_target() { case "$1" in
+            *.test.*|*.spec.*) return 1 ;;
+            *frameworks/copywriting/*|*voice-and-tone*) return 1 ;;
+            *.tsx|*.ts|*.md|*.mdx) return 0 ;;
+            *) return 1 ;;
+          esac; }
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            is_target "$f" || continue
+            any=1
+            if grep -niE '\bhumans?\b' "$f" \
+                 | grep -vE '^[0-9]+:[[:space:]]*(//|\*|#|/\*|<!--)' \
+                 | grep -qivE 'no human.?in.?the.?loop|human review|human oversight|human-read|humanis|humaniz|HUMANS?_|_HUMANS?|-humans?-|"human"|\.human\b'; then
+              echo "::error file=$f::'human/humans' in marketing copy — use 'people' or second person (frameworks/copywriting/voice-and-tone.md)"
+              fail=1
+            fi
+          done < <(git diff --name-only --diff-filter=ACM "${base}...HEAD" 2>/dev/null)
+          if [ "$any" = 0 ]; then echo "no changed user-facing files — voice gate is a no-op"; exit 0; fi
+          if [ "$fail" = 0 ]; then echo "voice gate passed"; fi
+          exit "$fail"
+
   billing-contract:
     # Billing & Settlement contract gate (frameworks/billing). Validates every billing.config.yaml against
     # billing-config.schema.json + the pinned invariants — above all the CENTS INVARIANT (passthrough must be
@@ -234,16 +276,44 @@ jobs:
             echo "::notice::no frameworks/billing/validate-billing.py — run consume.sh to adopt the billing contract. Skipping."
           fi
 
+  meter-registry:
+    # Canonical-meter-registry gate (frameworks/pricing). Enforces, against the single source of record
+    # meters.json: (1) MARGIN-SAFETY — every list_price_usd >= cogs_usd (a unit is never sold below the
+    # dearest covered-backend cost; the money guard), and (2) SINGLE-SOURCE — the three duplicated meter
+    # enums (pricing.schema.json meter + topology_meters, billing-config.schema.json name) equal the registry
+    # (kills the storage_gb-vs-wave_storage_gb / voice_minutes-vs-voice_synthesis_minutes drift class).
+    # Schema-driven (reads the enums, never hardcodes the list). Advisory on rollout (continue-on-error) so a
+    # new gate can't break every spoke at once; harden to blocking after soak.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with: { python-version: "3.11" }
+      - name: Canonical meter-registry gate
+        run: |
+          python3 -m pip install --quiet pyyaml
+          if [ -f frameworks/pricing/validate-meters.py ]; then
+            python3 frameworks/pricing/validate-meters.py
+          else
+            echo "::notice::no frameworks/pricing/validate-meters.py — skipping the meter-registry gate."
+          fi
+
   # ── SCA: dependency review (advisory) ───────────────────────────────────────
   # Software-composition analysis on PRs: flags newly-introduced dependencies with known
   # vulnerabilities or disallowed licenses, by diffing the dependency graph (base ↔ head). Inherited
   # org-wide via this reusable gate (@v1) — every consumer gets SCA on its PRs with no per-repo wiring.
   #
   # Deliberately ADVISORY (not a merge-blocker) for now: it only runs on pull_request (the action needs
-  # PR base/head to diff), and continue-on-error keeps it from failing repos that have no dependency
-  # graph / GHAS enabled. Promote a repo's `gate / dependency-review` to a required check once its graph
-  # is on and the signal is clean — exactly the #94 "required checks matched to real CI" principle:
-  # turn it on where it actually runs, never require a check that can't report.
+  # PR base/head to diff). Both job- AND step-level `continue-on-error: true` are required to keep the
+  # gate from blocking spokes that lack GitHub Advanced Security ("Dependency review is not supported
+  # on this repository"). Job-level alone only stops the workflow from failing — the check-run API
+  # still reports the step conclusion as FAILURE. Step-level changes the step's conclusion to SUCCESS,
+  # which is what required-status-check protection actually reads. Promote per-repo by turning the
+  # check into a required check only on spokes whose graph is on and signal is clean.
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -254,6 +324,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Dependency review (vulns + licenses)
+        continue-on-error: true
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high

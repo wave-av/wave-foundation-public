@@ -1,0 +1,24 @@
+{
+  "$comment": "WAVE discoverability standard. Single source of record for the surfaces every spoke must / should serve. Read by audit-discoverability.py — do not duplicate this list in the script.",
+  "version": "1.0.0",
+  "surfaces": [
+    { "path": "/robots.txt",                "tier": "required",    "content_type": "text/plain",                "must_contain": ["Sitemap:"] },
+    { "path": "/sitemap.xml",               "tier": "required",    "content_type": "application/xml",            "must_contain": ["<urlset"] },
+    { "path": "/llms.txt",                  "tier": "required",    "content_type": "text/plain",                "must_contain": ["WAVE"] },
+    { "path": "/index.json",                "tier": "required",    "content_type": "application/json",           "json_keys": ["name", "surfaces"] },
+    { "path": "/og.png",                    "tier": "required",    "content_type": "image/png",                  "must_contain": [] },
+    { "path": "/manifest.webmanifest",      "tier": "required",    "content_type": "application/manifest+json",  "json_keys": ["name"] },
+    { "path": "/.well-known/did.json",      "tier": "required",    "content_type": "application/json",           "json_keys": ["id", "verificationMethod"] },
+    { "path": "/feed.xml",                  "tier": "recommended", "content_type": "application/atom+xml",        "must_contain": ["<feed"] },
+    { "path": "/.well-known/x402",          "tier": "recommended", "content_type": "application/json",           "json_keys": [] },
+    { "path": "/.well-known/mcp",           "tier": "recommended", "content_type": "application/json",           "json_keys": ["mcpServers"] },
+    { "path": "/skill.md",                  "tier": "recommended", "content_type": "text/markdown",              "must_contain": [] },
+    { "path": "/security.txt",              "tier": "recommended", "content_type": "text/plain",                 "must_contain": ["Contact:"] }
+  ],
+  "html_head_checks": [
+    { "name": "og:image",  "selector": "meta[property='og:image']",          "tier": "required" },
+    { "name": "og:title",  "selector": "meta[property='og:title']",          "tier": "required" },
+    { "name": "canonical", "selector": "link[rel='canonical']",              "tier": "required" },
+    { "name": "json-ld",   "selector": "script[type='application/ld+json']", "tier": "required" }
+  ]
+}

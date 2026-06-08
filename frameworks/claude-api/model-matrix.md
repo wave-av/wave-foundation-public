@@ -179,6 +179,9 @@ else:
 GA on Opus 4.8/4.7/4.6, Sonnet 4.6/4.5, Opus 4.5, Haiku 4.5 (Claude API). Use
 `output_config.format` with `type:"json_schema"`. Combinable with strict tool use (`strict:true`).
 
+- ⚠️ **Every `object` in the schema MUST set `"additionalProperties": false`** — omit it and the request
+  is rejected **400** (`output_config.format.schema: For 'object' type, 'additionalProperties' …`).
+  Verified live on `claude-opus-4-8`. Same rule as strict tool use (`tools.md`).
 - ❌ `output_format` at the top level (deprecated) → use `output_config.format`.
 - ❌ Citations **+** `output_config.format` together → **400** (citations interleave blocks; schema
   forbids it). Pick one.

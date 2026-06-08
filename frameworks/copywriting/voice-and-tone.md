@@ -1,6 +1,6 @@
 # WAVE Copywriting Standard — voice, tone & the human/agent taxonomy
 
-_Foundation standard. Ported from wave-surfer-connect `.claude/rules/80-copywriting` + agent-experience.
+_Foundation standard. Ported from an internal WAVE repo's `.claude/rules/80-copywriting` + agent-experience.
 Every WAVE surface — spoke pages, docs, emails, agent surfaces — runs its copy through this._
 
 ## Brand voice (constant)
@@ -43,6 +43,26 @@ written for **two audiences with different needs**, never one at the expense of 
 Rule: a human sentence states the **benefit**; the agent line states the **contract**. If a surface
 serves both (e.g. a landing page that also exposes `/llms.txt`), write each in its own register — don't
 blend them into clever-but-vague copy.
+
+### Say "people", not "humans" (enforced)
+
+In user-facing copy, name the reader as **"people"** or use the **second person ("you", "your agents")** —
+never **"humans"**. "Humans" centers the *agent* as the default and frames the person as the special-case
+other ("humans welcome too"); that reads cold and othering. "People" centers the reader; second person
+("you call it through the SDK; your agents call it over x402") dissolves the dichotomy and is warmest.
+
+- ✅ "for people and agents" · "Video infrastructure for people and AI agents" · "called by you through the SDK"
+- ❌ "for humans and agents" · "humans can also use it" · "a human authenticates with a key"
+
+**Allowed (deliberate, not othering) — these pass the gate:**
+- The idiom **"no human in the loop"** (agent-autonomy contrast, not a description of the reader).
+- The legal terms **"human review"** / **"human oversight"** (GDPR Art. 22 / EU AI Act term-of-art).
+- **"human-readable"** (standard technical term, counterpart to machine-readable).
+- Identifiers / const names / id-slugs and code comments (not user-facing copy).
+
+Enforced by the `voice` job in `checks.yml` (every spoke, on changed files) and locally by
+`copy-checker.sh` (lefthook). It scans only changed `.ts/.tsx/.md/.mdx`, so it gates *new* copy and
+never retroactively fails unswept files.
 
 ## Core principles
 

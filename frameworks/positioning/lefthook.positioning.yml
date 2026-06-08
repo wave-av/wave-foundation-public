@@ -1,0 +1,10 @@
+# WAVE positioning gate — lefthook integration (merge into a repo's lefthook.yml).
+# Runs the positioning gate on staged user-facing files at commit time. Fails on ERROR-severity
+# (identity drift — e.g. "The Agent Money OS" as a headline, asserting the unbuilt Wallet).
+pre-commit:
+  parallel: true
+  commands:
+    positioning:
+      # Only run when user-facing surfaces are staged.
+      glob: "*.{tsx,ts,md,mdx}"
+      run: bash frameworks/positioning/positioning-check.sh --staged

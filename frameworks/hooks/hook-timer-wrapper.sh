@@ -14,7 +14,7 @@
 #   HOOK_TIMER_TIMEOUT  seconds before the hook is killed (default: 10; "0" disables the kill)
 #   HOOK_TIMER_FILE     JSONL cost log path (default: ${TMPDIR:-/tmp}/claude/hook-costs.jsonl)
 #
-# Provenance: hardened in wave-surfer-connect for hook cost attribution (E2).
+# Provenance: hardened in an internal WAVE repo for hook cost attribution (E2).
 set +e
 
 HOOK_NAME="${1:?Usage: hook-timer-wrapper.sh <hook-name> <command> [args...]}"

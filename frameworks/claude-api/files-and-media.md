@@ -182,7 +182,7 @@ Beta header (Files API only): `anthropic-beta: files-api-2025-04-14`.
 
 ## Related
 
-- [`model-routing/README.md`](../model-routing/README.md) — the five-tier Leveragizer all of these calls route through
+- [`model-routing/README.md`](../model-routing/README.md) — the multi-tier Leveragizer all of these calls route through
 - [`prompt-caching.md`](./prompt-caching.md) — breakpoints, min-prefix nuance, `cache_read_input_tokens`
 - [`batch.md`](./batch.md) — 50%-off bulk media processing + the not-ZDR gate
 - [`request-surface.md`](./request-surface.md) — `output_config.format`, streaming, `max_tokens` thresholds

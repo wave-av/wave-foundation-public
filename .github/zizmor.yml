@@ -1,0 +1,97 @@
+# zizmor config — accepted, by-design findings (with rationale). Everything else must pass.
+#
+# Posture: the CI gate (zizmor.yml) runs the `regular` persona and is clean (0 findings). The
+# stricter `auditor` persona surfaces advisory items; these were triaged:
+#   - excessive-permissions: FIXED — workflow-level writes moved to job-level least-privilege
+#     (automerge, semantic-pr, cubic-review) so each job gets only the scopes it uses.
+#   - secrets-outside-env: accepted below — these secrets are third-party API keys / App inputs,
+#     not deployment credentials; a protected GitHub Environment adds no real safety here.
+#   - obfuscation: accepted below — dynamic secret indexing is the intentional per-bot parameterization.
+#   - anonymous-definition / concurrency-limits / undocumented-permissions: accepted as stylistic
+#     (single-purpose jobs, fast deterministic gates, permissions commented where non-obvious). The
+#     gate stays on `regular`, so these advisory items don't block.
+rules:
+  github-app:
+    # reusable-bot-token.yml's whole purpose is to mint a GitHub App installation token;
+    # the App's permissions are scoped at the App registration, not in this workflow.
+    #
+    # io-{triage,assess,action,resolve}.yml: each mints the issue-ops-bot token in an opt-in,
+    # dormant step (if: vars.IO_USE_APP == 'true'). The App is registered least-privilege
+    # (Contents:read, Issues:write, PRs:write, Workflows:NO ACCESS — docs/issue-ops-github-app.md).
+    # Per-step permission-* narrowing is deliberately omitted: Stage D's branch-rules read can
+    # 403 under too-tight scoping → empty required-checks → fail-OPEN green-gate, and that path
+    # can't be live-validated until the App exists. App-level scoping is the control. Same
+    # accepted precedent as reusable-bot-token.yml.
+    #
+    # open-core-publish.yml: mints a wave-av-release-bot token scoped to wave-foundation-public
+    # (owner+repositories) with contents+PR+workflows write — the App's scope is the control, and
+    # the token is narrowed to a single repo. Apply-gated; never runs on untrusted input.
+    #
+    # obs-wire.yml: mints the issue-ops-bot token scoped to ONLY wave-foundation (owner+repositories)
+    # read, purely so this reusable workflow can fetch the SSoT wire-sentry-dsn.sh from the PRIVATE
+    # foundation repo (a reusable workflow runs with the caller's GITHUB_TOKEN, which can't read another
+    # private repo). App-level least-privilege is the control; single-repo scope. Same precedent as io-*.
+    ignore:
+      - reusable-bot-token.yml
+      - open-core-publish.yml
+      - io-triage.yml
+      - io-assess.yml
+      - io-action.yml
+      - io-resolve.yml
+      - obs-wire.yml
+  overprovisioned-secrets:
+    # Dynamic secret names (per-bot <PREFIX>_<BOT>_APP_ID / _PRIVATE_KEY) are the documented,
+    # intentional parameterization — not blanket `secrets: inherit`.
+    ignore:
+      - reusable-bot-token.yml
+  obfuscation:
+    # Same dynamic per-bot secret indexing (secrets[steps.names.outputs.*]) — intentional.
+    ignore:
+      - reusable-bot-token.yml
+  secrets-inherit:
+    # wave-bugbot.yml calls reusable-bot-token.yml, which reads a DYNAMICALLY-NAMED secret
+    # (<PREFIX>_<BOT>_APP_ID/_PRIVATE_KEY) that cannot be passed explicitly → `secrets: inherit`
+    # is required. Same accepted precedent as the github-app / overprovisioned-secrets ignores.
+    ignore:
+      - wave-bugbot.yml
+  secrets-outside-env:
+    # Third-party API key / App private key passed as an action input or step env — not a
+    # deployment credential, so a protected GitHub Environment adds no meaningful protection.
+    ignore:
+      - cubic-review.yml
+      - changelog-unreleased.yml
+      - reusable-bot-token.yml
+  excessive-permissions:
+    # Genuinely-necessary writes (auditor-persona only; the regular gate is clean):
+    #   reusable-changelog.yml — contents:write to create the GitHub release/changelog
+    #   reusable-bot-token.yml — reusable token minter; the caller controls the real scopes
+    #   scorecard.yml — OpenSSF Scorecard requires id-token + security-events:write
+    ignore:
+      - reusable-changelog.yml
+      - reusable-bot-token.yml
+      - scorecard.yml
+  cache-poisoning:
+    # release-spoke-chassis.yml: the setup-node steps do NOT enable caching (no `cache:`
+    # key), so no cache is ever restored — there is no poisoned-cache vector to exploit.
+    # zizmor flags the publish trigger + setup-node *capability* (confidence: Low). Accepted.
+    # release-observability.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
+    # release-messaging.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
+    # obs-wire.yml: enables NO caching anywhere (no `cache:` key on any step) → no cache is ever
+    # restored, so there is no poisoned-cache vector. zizmor flags the capability at Low confidence
+    # because the job mutates external state (the idempotent CF secret PUT). Accepted, same as above.
+    ignore:
+      - release-spoke-chassis.yml
+      - release-observability.yml
+      - release-messaging.yml
+      - obs-wire.yml
+  use-trusted-publishing:
+    # release-spoke-chassis.yml publishes to PRIVATE org GitHub Packages
+    # (npm.pkg.github.com) with the built-in GITHUB_TOKEN. OIDC trusted publishing is a
+    # public-npmjs feature; it does not apply to GitHub Packages (and provenance needs
+    # public access, which this private package can't use). Accepted.
+    # release-observability.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
+    # release-messaging.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
+    ignore:
+      - release-spoke-chassis.yml
+      - release-observability.yml
+      - release-messaging.yml

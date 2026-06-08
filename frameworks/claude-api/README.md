@@ -6,7 +6,7 @@
 
 This standard is **the API contract**, not the routing decision. *Which* tier a call lands on and
 *which* model populates it is owned by [`frameworks/model-routing`](../model-routing/README.md) (the
-5-tier Token Leveragizer). *How* Claude CODE / MCP / secrets are wired is owned by
+multi-tier Token Leveragizer). *How* Claude CODE / MCP / secrets are wired is owned by
 `frameworks/claude-config/` (Doppler — sibling, may land separately). This file owns *how the HTTP
 request to Anthropic is shaped* once routing has decided to make one.
 
@@ -43,7 +43,7 @@ frameworks/claude-config   →  Claude Code / MCP / Doppler secrets (sibling fac
 ```
 
 - All inference routes through the [Leveragizer](../model-routing/README.md):
-  `local_30b (Studio) → Vercel AI Gateway → OpenRouter → direct Anthropic → human`. **Never** call
+  `local_30b (Studio) → AI Gateway → OpenRouter → direct Anthropic → human`. **Never** call
   direct Anthropic without going through the gateway first — you lose observability + billing aggregation.
 - The runnable chassis is [`model-routing/local_offload`](../model-routing/local_offload/) — an
   Anthropic-shaped shim on `:8088` whose frontier endpoint targets the hosted Anthropic API. Point your
@@ -151,7 +151,9 @@ never `.md`, so this doc's own ❌ examples don't trip it; honors the `staging/`
 
 ## Related
 
-- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the 5-tier Leveragizer; owns model selection + escalation.
+- [`efficiency-levers.md`](./efficiency-levers.md) — **the cost cheatsheet**: every lever (caching, routing, effort, flex, context-editing, compaction, task_budget, structured outputs, cache diagnostics, Batch, …), what it saves, how to enable, when not to.
+- [`cache-diagnostics.md`](./cache-diagnostics.md) — **cache-miss → fix playbook**: read the console's miss-reason / write-amortization panels, attribute each miss (model/system/tools/messages_changed), and fix it at the source.
+- [`frameworks/model-routing/README.md`](../model-routing/README.md) — the multi-tier Leveragizer; owns model selection + escalation.
 - [`frameworks/model-routing/local_offload/`](../model-routing/local_offload/) — runnable Anthropic-shaped shim (`:8088`).
 - `frameworks/claude-config/` — Claude Code / MCP / Doppler secrets (sibling facet; cross-link, do not duplicate).
 - [`frameworks/observability/README.md`](../observability/README.md) — wrap inference failures in `notifyOps`.

@@ -1,6 +1,6 @@
 # Reusable Bot Token Generator
 # Mints a short-lived GitHub App installation token so a calling workflow can act as a specific
-# bot identity instead of the generic github-actions[bot]. Harvested from wave-surfer-connect and
+# bot identity instead of the generic github-actions[bot]. Harvested from an internal WAVE repo and
 # genericized: bot-name + secret-prefix are inputs (no hardcoded wave-av names).
 #
 # Per-repo setup — store these secrets for each bot (default prefix "BOT"):

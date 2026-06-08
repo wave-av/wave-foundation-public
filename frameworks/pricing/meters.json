@@ -1,0 +1,105 @@
+{
+  "$comment": "CANONICAL WAVE METER REGISTRY — the single machine-readable source of record. The README table, pricing.schema.json (meter + topology_meters enums) and billing-config.schema.json (name enum) are DERIVED from / checked against this file by validate-meters.py. To add or change a meter, edit HERE first. Every list_price_usd MUST clear cogs_usd (the dearest covered-backend cost); the validator fails the build otherwise. COGS verified against official Cloudflare / AWS / Anthropic / OpenAI pricing pages 2026-06-02 (task #89 6-agent research); names match the executed live Stripe migration (ADR docs/meter-registry-alignment.md, #38). 'billing' = how the meter charges: per_unit (FLAT cents = list_usd×100), passthrough (Metronome sums amount_usd, rate_cents=100; the per-unit price is baked into amount_usd by the emitter), or none (unpriced).",
+  "version": 1,
+  "currency": "USD",
+  "meters": {
+    "decisions": {
+      "unit": "routing decision",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.0001,
+      "cogs_usd": 0.0,
+      "cogs_source": "BYOK control-plane: WAVE bills routing only; customer keys + inference never transit WAVE, so WAVE pays ~$0 backend per decision (just edge compute).",
+      "rates": {
+        "account": 0.0001,
+        "x402": 0.001,
+        "overage": 0.0002,
+        "premium": 0.0005
+      },
+      "rates_note": "account = authenticated/off-chain meter rate; x402 = 10x gas-covering on-chain per-call (~$0.001 Base gas); overage = beyond-quota (>= account, never sold at a loss); premium = dispatch_plus tier.",
+      "replaces": []
+    },
+    "storage_gb": {
+      "unit": "GB-month",
+      "aggregation": "last",
+      "billing": "per_unit",
+      "list_price_usd": 0.10,
+      "cogs_usd": 0.023,
+      "cogs_source": "AWS S3 Standard $0.023/GB-mo (dearest covered); CF R2 Standard $0.015 real backend, $0 egress (2026-06-02).",
+      "replaces": ["wave_storage_gb"]
+    },
+    "bandwidth_gb": {
+      "unit": "GB egress",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.08,
+      "cogs_usd": 0.053,
+      "cogs_source": "CF Stream delivery @~2.5 Mbps $0.053/GB (dearest path); R2/Workers egress $0 real. Anchored a left-digit below AWS DTO $0.09 (2026-06-02).",
+      "replaces": []
+    },
+    "compute_minutes": {
+      "unit": "compute-minute",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.10,
+      "cogs_usd": 0.0415,
+      "cogs_source": "Lambda H100 GPU-minute $0.0415 (dearest covered, $2.49/hr); CF Containers 1 vCPU+2 GiB ~$0.0015 real. Token/GPU inference belongs to ai_tokens (2026-06-02).",
+      "replaces": []
+    },
+    "stream_minutes": {
+      "unit": "delivered-minute",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.005,
+      "cogs_usd": 0.0025,
+      "cogs_source": "api.video / AWS IVS output $0.0025/min (dearest fallback); CF Stream Video Delivered $0.001/min real, egress bundled (2026-06-02). FLOW meter (delivered), distinct from storage_minutes (STOCK).",
+      "replaces": ["wave_stream_minutes"]
+    },
+    "storage_minutes": {
+      "unit": "stored-minute-month",
+      "aggregation": "last",
+      "billing": "per_unit",
+      "list_price_usd": 0.01,
+      "cogs_usd": 0.005,
+      "cogs_source": "CF Stream storage $0.005/min-mo, single backend (original-duration only; renditions do not multiply) (2026-06-02). STOCK meter (media held), distinct from stream_minutes (FLOW).",
+      "replaces": ["wave_storage_minutes"]
+    },
+    "ai_tokens": {
+      "unit": "token",
+      "aggregation": "sum",
+      "billing": "passthrough",
+      "list_price_usd": 0.000015,
+      "cogs_usd": 0.00001125,
+      "cogs_source": "GPT-5.5 blended 3:1 in:out = $11.25/1M = $0.00001125/token (dearest covered); Sonnet 4.6 $6/1M, CF Workers AI local ~$0.42/1M (2026-06-02). $15 per 1M tokens. WAVE-hosted inference only — distinct from BYOK decisions.",
+      "price_note": "$15 per 1,000,000 tokens (= $0.000015/token). Unit is per-TOKEN (resolves the legacy '1K tokens' ambiguity). Billed via amount_usd passthrough (rate_cents=100), so the per-token price is applied by the emitter, not a Metronome FLAT rate.",
+      "replaces": ["wave_ai_tokens"]
+    },
+    "voice_synthesis_minutes": {
+      "unit": "synthesized-minute",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.25,
+      "cogs_usd": 0.18,
+      "cogs_source": "ElevenLabs $0.18/min (dearest TTS backend); modality/voice.json (2026-06-02).",
+      "replaces": ["wave_voice_minutes", "voice_minutes"]
+    },
+    "transcription_minutes": {
+      "unit": "transcribed-minute",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.015,
+      "cogs_usd": 0.0062,
+      "cogs_source": "AssemblyAI $0.0062/min (dearest STT backend); modality/transcription.json (2026-06-02).",
+      "replaces": ["wave_transcription_minutes"]
+    },
+    "api_calls": {
+      "unit": "call",
+      "aggregation": "sum",
+      "billing": "none",
+      "list_price_usd": null,
+      "cogs_usd": null,
+      "cogs_source": "Generic API-call meter — no live price set; margin invariant SKIPPED until priced.",
+      "replaces": ["wave_api_calls"]
+    }
+  }
+}

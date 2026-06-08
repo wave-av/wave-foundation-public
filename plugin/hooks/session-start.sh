@@ -3,6 +3,25 @@
 # and warn about the shared-checkout hazard that caused the 2026-05-28 reset incident.
 set +e
 
+# --- post-compaction sentinel (CCCR) ---
+# SessionStart fires with source=compact right after a /compact, BEFORE the first post-compact
+# prompt. At that instant the transcript's last usage record is still the big PRE-compact value, so
+# context-budget-warn.sh would emit a false "approaching the band" warning. Drop a one-shot,
+# session-keyed marker that the decision engine consumes to stay quiet for exactly that one turn.
+_ss_in="$(cat 2>/dev/null)"
+_ss_src="$(printf '%s' "$_ss_in" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("source") or "")
+except Exception: print("")' 2>/dev/null)"
+if [ "$_ss_src" = "compact" ]; then
+  _ss_sid="$(printf '%s' "$_ss_in" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("session_id") or "")
+except Exception: print("")' 2>/dev/null)"
+  if [ -n "$_ss_sid" ]; then
+    mkdir -p /tmp/claude/session-state 2>/dev/null
+    : >"/tmp/claude/session-state/postcompact-$_ss_sid" 2>/dev/null
+  fi
+fi
+
 # Print brief reminder only if interactive (not in CI)
 if [ -t 1 ] || [ "${CLAUDE_SESSION_ID:-}" != "" ]; then
   echo "[wave-foundation] Rules loaded: no-mock-data · oklch-colors · rls-policies · behavioral-rules · git-safety"

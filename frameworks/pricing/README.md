@@ -40,19 +40,36 @@ relay's `/.well-known/x402` and pays per-GB with no account — and **both decre
 ## Canonical meters (the registry)
 
 The deduped, authoritative set. A product MUST bill one of these — it MUST NOT mint a product-local
-twin (that is exactly the `storage_gb` vs `wave_storage_gb` disease). To add a meter, add it here first.
+twin (that is exactly the `storage_gb` vs `wave_storage_gb` disease).
 
-| Meter | Unit | Aggregation | Replaces (delete these) |
-|-------|------|-------------|--------------------------|
-| `decisions` | per routing decision | sum | — |
-| `stream_minutes` | minute streamed | sum | `wave_stream_minutes` |
-| `bandwidth_gb` | GB egress | sum | — |
-| `storage_gb` | GB stored | last | `wave_storage_gb` |
-| `ai_tokens` | 1K tokens | sum | — |
-| `voice_minutes` | minute synthesized | sum | — |
-| `transcription_minutes` | minute transcribed | sum | — |
-| `compute_minutes` | minute compute | sum | — |
-| `api_calls` | call | sum | `wave_api_calls` |
+**The machine-readable source of record is [`meters.json`](./meters.json)** — list price, dearest-backend COGS,
+aggregation, and `replaces` aliases for every meter. This table is rendered from it. `validate-meters.py`
+(the `meter-registry` CI gate) enforces two invariants against `meters.json`: (1) **margin-safety** — every
+`list_price_usd >= cogs_usd` (a unit is never sold below the priciest backend that could serve it), and
+(2) **single-source** — the three duplicated meter enums (`pricing.schema.json` `meter` + `topology_meters`,
+`billing-config.schema.json` `name`) must equal the registry. **To add or reprice a meter, edit `meters.json`
+first** — the schema enums + this table follow, and CI fails any drift or below-COGS price.
+
+Prices + COGS verified against official Cloudflare / AWS / Anthropic / OpenAI pages 2026-06-02 (#89); names
+match the executed live Stripe migration (#38, [ADR](../../docs/meter-registry-alignment.md) lives in dispatch).
+
+| Meter | Unit | Aggr | List price | Dearest-backend COGS | Replaces |
+|-------|------|------|-----------:|---------------------:|----------|
+| `decisions` | routing decision | sum | $0.0001 | ~$0 (BYOK control-plane) | — |
+| `storage_gb` | GB-month | last | $0.10 | $0.023 (S3 Std; R2 $0.015) | `wave_storage_gb` |
+| `bandwidth_gb` | GB egress | sum | $0.08 | $0.053 (CF Stream @2.5Mbps) | — |
+| `compute_minutes` | compute-minute | sum | $0.10 | $0.0415 (Lambda H100 GPU-min) | — |
+| `stream_minutes` | delivered-minute | sum | $0.005 | $0.0025 (api.video/IVS) | `wave_stream_minutes` |
+| `storage_minutes` | stored-minute-mo | last | $0.01 | $0.005 (CF Stream storage) | `wave_storage_minutes` |
+| `ai_tokens` | token | sum | $0.000015 ($15/1M) | $0.00001125 (GPT-5.5 3:1) | `wave_ai_tokens` |
+| `voice_synthesis_minutes` | synth-minute | sum | $0.25 | $0.18 (ElevenLabs) | `wave_voice_minutes`, `voice_minutes` |
+| `transcription_minutes` | transcribed-minute | sum | $0.015 | $0.0062 (AssemblyAI) | `wave_transcription_minutes` |
+| `api_calls` | call | sum | *(unpriced)* | *(unpriced)* | `wave_api_calls` |
+
+`decisions` also carries rate-variants (in `meters.json`): x402 $0.001 (10× gas-covering on-chain per-call),
+overage $0.0002 (beyond-quota), premium $0.0005 (dispatch_plus). `ai_tokens` is **passthrough** (Metronome sums
+`amount_usd`, rate_cents=100; the per-token price is applied by the emitter). `voice_minutes` is **deprecated** —
+use `voice_synthesis_minutes` (the descriptive stem dispatch + the live Stripe meter use).
 
 ## Human platform tiers
 
@@ -66,8 +83,9 @@ ONE human pricing page. The ~76 "products" become **module entitlements + quotas
 | Volume | $599 | high-volume |
 
 (Keep the existing GBP/EUR/CAD/AUD + annual prices on this spine.) Each tier carries module entitlement
-flags (`modules.ndi = true`) and per-meter quotas; beyond quota = metered overage at the canonical rate
-(`ai_tokens` $0.01, `voice_minutes` $0.02, `storage_gb` $0.10/GB; price the rest before bundling).
+flags (`modules.ndi = true`) and per-meter quotas; beyond quota = metered overage at the **canonical rate
+from [`meters.json`](./meters.json)** (e.g. `ai_tokens` $15/1M, `voice_synthesis_minutes` $0.25/min,
+`storage_gb` $0.10/GB — all margin-safe). Never invent an overage rate; read it from the registry.
 
 **Human footgun — overage MUST default to capped + alert.** A simple human plan defaults to a hard spend
 ceiling with 80%/100% in-app alerts. Uncapped overage is opt-in, never the default. "Everything included"
