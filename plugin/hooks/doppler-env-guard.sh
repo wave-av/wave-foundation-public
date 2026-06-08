@@ -47,7 +47,7 @@ for v in $vars; do
   • \$$v  →  doppler run --project ${loc%/*} --config ${loc#*/} --command '<your command>'"
   else
     # Unknown to Doppler → only nudge if it's actually unset ($v is [A-Za-z0-9_], indirect-expand safe).
-    eval "cur=\${$v:-}"
+    cur=${!v:-}
     [ -n "${cur:-}" ] && continue
     nudge="$nudge \$$v"
   fi
