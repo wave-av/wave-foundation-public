@@ -149,7 +149,7 @@ def main() -> int:
     if errors:
         print(f"meter-registry: {len(errors)} violation(s)\n", file=sys.stderr)
         for e in errors:
-            print("  ✗ " + e, file=sys.stderr)
+            print("  ✗ [REDACTED EMAIL ADDRESS]", file=sys.stderr)
         return 1
     meters = reg["meters"]
     priced = [n for n, m in meters.items() if m.get("cogs_usd") is not None]
