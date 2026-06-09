@@ -26,7 +26,7 @@ fully-attributed*.
 
 ## The capability matrix
 
-Studio fleet = Ollama at `http://100.92.89.55:11434` (champions.json is the single source of
+Studio fleet = Ollama at `http://your-ollama-host:11434` (champions.json is the single source of
 truth; read it, don't memorize model names here).
 
 | Capability | Local-capable? | Studio champion | Quality bar | Escalation trigger → hosted |
@@ -156,7 +156,7 @@ the only difference is the substrate that served the tokens.
 
 | Var | Purpose |
 |---|---|
-| `OLLAMA_API_KEY` | tier-1 Studio gate (local champions at `100.92.89.55:11434`) |
+| `OLLAMA_API_KEY` | tier-1 Studio gate (local champions at `your-ollama-host:11434`) |
 | `WAVE_PROXY_OFFLOAD` | chassis offload switch; **unset = passthrough + measure** (safe default) |
 | `ANTHROPIC_BASE_URL` | points at the gateway/shim — never `api.anthropic.com` directly |
 | `VERCEL_AI_GATEWAY_API_KEY` | tier-2 gateway — the escalation default for direct-Anthropic traffic |
