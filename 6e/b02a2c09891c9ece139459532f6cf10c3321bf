@@ -1,0 +1,19 @@
+frameworks/claude-api/local-inference.md
+  s_5f27fa5b8237cd::t_f244fd655a39eb 29,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "6eb02a2c09891c9ece139459532f6cf10c3321bf",
+  "prompts": {},
+  "sessions": {
+    "s_5f27fa5b8237cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "15ec0bf8-6164-4260-bae1-00c610d449bb",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
