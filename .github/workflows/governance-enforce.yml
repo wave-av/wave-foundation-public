@@ -1,9 +1,8 @@
 name: governance-enforce
 
 # A_BLOCK gate: no-secrets-in-git / secrets-from-doppler / no-hardcoded-paths, enforced on the
-# PR diff via the @wave-av/governance package (the org fan-out channel). Diff-scoped: blocks NEW
-# violations without failing on legacy debt. Isolated install bypasses any min-release-age policy.
-# The org ruleset `governance-a-block-enforce` requires this job's `enforce` check.
+# PR diff via the @wave-av/governance package. Diff-scoped: blocks NEW violations only.
+# Actions SHA-pinned (pinact/zizmor): tags kept in trailing comments.
 
 on:
   pull_request:
@@ -20,11 +19,11 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
       - name: fetch governance enforcer (isolated install)
