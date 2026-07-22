@@ -18,6 +18,10 @@ env:
   # sha256 of pinact_linux_amd64.tar.gz from the v4.0.0 release checksums.txt
   PINACT_SHA256: cc220902615325b10bd3bc52ed3de27488f79adaec52adcd12bd2194c2d2c592
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pinact:
     runs-on: ubuntu-latest
