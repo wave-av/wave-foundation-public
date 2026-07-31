@@ -43,6 +43,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # This job only reads the tree (gitleaks --no-git + ripgrep); it never
+          # pushes, so don't persist the token in .git/config (zizmor: artipacked).
+          persist-credentials: false
 
       # gitleaks' GitHub Action requires a paid license for organizations; the CLI
       # itself is MIT-licensed and free. Pin the version AND verify the release

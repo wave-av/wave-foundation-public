@@ -12,7 +12,10 @@ Covers two attack surfaces:
 Public-extractable: prod-ref literals live in env vars only. Private overlays set the values
 via AGENTS.local.md (gitignored) or the agent's shell environment.
 """
-import os, sys, json, re
+import json
+import os
+import re
+import sys
 
 # Read prod refs from environment — comma-separated, whitespace-tolerant. An empty set means
 # the hook is inert (suitable for the public open-core copy where the operator hasn't yet
