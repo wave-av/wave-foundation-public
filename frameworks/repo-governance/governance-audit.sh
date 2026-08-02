@@ -27,6 +27,27 @@ echo
 
 printf "%-26s %-4s  RE CH AG SE CO CR LI  prot reqd-checks\n" "REPO" "VIS"
 echo   "──────────────────────────────────────────────────────────────────────────────"
+# ENUMERATE ONCE, FAIL CLOSED (#944). This is the NETWORK lister — the same class already fixed in
+# #948, and the most failure-prone kind: a rate-limit, an expired token or any 5xx is routine, and
+# every one of them left the loop with nothing to read and the report ending "✓ no public P0 gaps".
+# An audit that contacted nothing is byte-identical to a fully-compliant org.
+#
+# Emptiness is fatal as well as status, for the reason #948 established: `gh` exits 0 on a 200
+# carrying `[]`, and a token lacking org read scope returns an empty list rather than an error. An
+# org with zero non-archived repos is not a real state — it means the scope or the org name is wrong.
+repo_list="$(mktemp)"
+chmod 0600 "$repo_list"
+trap 'rm -f "$repo_list"' EXIT
+if ! gh repo list "$ORG" --limit 200 --json name,visibility,isArchived \
+  --jq '.[] | [.name, (.visibility|ascii_downcase), (.isArchived|tostring)] | @tsv' | sort >"$repo_list"; then
+  echo "governance-audit: ✗ could not enumerate $ORG repos (gh failed) — refusing to report an audit. Nothing was checked; treat this as blocked, not clean." >&2
+  exit 2
+fi
+if [ ! -s "$repo_list" ]; then
+  echo "governance-audit: ✗ the $ORG repo listing came back EMPTY. gh succeeded, so this is a scope or org-name problem, not an empty org — refusing to report an audit." >&2
+  exit 2
+fi
+
 p0=()
 while IFS=$'\t' read -r name vis archived; do
   [ "$archived" = "true" ] && continue
@@ -53,8 +74,7 @@ while IFS=$'\t' read -r name vis archived; do
     [ "$prot" = "n" ] && p0+=("$name: no branch protection")
     [ "$SEC_DEFAULT" != 1 ] && [ "$se" = 0 ] && p0+=("$name: no SECURITY (and no org default)")
   fi
-done < <(gh repo list "$ORG" --limit 200 --json name,visibility,isArchived \
-          --jq '.[] | [.name, (.visibility|ascii_downcase), (.isArchived|tostring)] | @tsv' | sort)
+done <"$repo_list"
 
 echo
 echo "Legend: RE=readme CH=changelog AG=agents.md SE=security CO=codeowners CR=coderabbit LI=license"

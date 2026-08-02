@@ -74,6 +74,21 @@
       "price_note": "$15 per 1,000,000 tokens (= $0.000015/token). Unit is per-TOKEN (resolves the legacy '1K tokens' ambiguity). Billed via amount_usd passthrough (rate_cents=100), so the per-token price is applied by the emitter, not a Metronome FLAT rate.",
       "replaces": ["wave_ai_tokens"]
     },
+    "realtime_tokens": {
+      "unit": "token",
+      "aggregation": "sum",
+      "billing": "passthrough",
+      "list_price_usd": 0.000003,
+      "cogs_usd": 0.0000009,
+      "cogs_source": "T2 ultra-fast REMOTE tier (EPIC E-RT #109): open-weight managed APIs (Groq LPU / Cerebras wafer-scale, 200-2600 tok/s) for real-time AI on live video/streaming. COGS = dearest covered backend, Cerebras gpt-oss-120b paid ref blended 3:1 in:out ~$0.70/1M with headroom to $0.0000009/token; free dev tiers today (2026-07-04) so cost_only events are honest $0 until a paid account is enrolled. Priced BELOW frontier ai_tokens ($15/1M) because the models are open-weight — the product is SPEED (real-time), not model class. Live COGS ledger = dispatch/t2_cogs.py (wave_realtime_tokens meter, per-org, margin-gated). Live Stripe billing event = wave_realtime_tokens (priceEnv STRIPE_PRICE_REALTIME_TOKENS, INERT until provisioned).",
+      "price_note": "$3 per 1,000,000 tokens (= $0.000003/token). Per-TOKEN passthrough (rate_cents=100); the per-token price is applied by the emitter. rates.x402 = 10x on-chain per-token to cover Base gas for pay-as-you-stream micropayments.",
+      "rates": {
+        "account": 0.000003,
+        "x402": 0.00003
+      },
+      "rates_note": "account = authenticated/off-chain real-time token rate; x402 = 10x gas-covering on-chain rate for per-segment streaming micropayments (E-RT Phase 3 'real-time money').",
+      "replaces": []
+    },
     "voice_synthesis_minutes": {
       "unit": "synthesized-minute",
       "aggregation": "sum",
@@ -91,6 +106,15 @@
       "cogs_usd": 0.0062,
       "cogs_source": "AssemblyAI $0.0062/min (dearest STT backend); modality/transcription.json (2026-06-02).",
       "replaces": ["wave_transcription_minutes"]
+    },
+    "edge_gpu_hours": {
+      "unit": "GPU-hour",
+      "aggregation": "sum",
+      "billing": "per_unit",
+      "list_price_usd": 0.50,
+      "cogs_usd": 0.24,
+      "cogs_source": "Customer on-demand GPU rental (Phase C #72): RunPod RTX-2000-Ada-class on-demand $0.24/gpu-hr verified live 2026-06-29. LAUNCH/dogfood class, capability-tier FLAT price, region-ABSORBED default (WAVE routes to the cheapest healthy backend and keeps the spread; the customer pays the same regardless of region). Dearer classes (A40/A100/H100) and region-PINNED residency are separate governed tiers, each with its own region/class COGS so the margin gate still holds — see README region-pinned-premium extension. Live billing event = wave_edge_gpu_hours (gateway GPU_PRODUCT_METERS, GPU raw-value meter billed verbatim via x-wave-meter-value; priceEnv STRIPE_PRICE_GPU_HOURS, INERT until provisioned).",
+      "replaces": ["wave_edge_gpu_hours"]
     },
     "api_calls": {
       "unit": "call",

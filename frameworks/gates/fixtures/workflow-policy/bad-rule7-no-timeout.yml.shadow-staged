@@ -1,0 +1,22 @@
+# STAGED, not wired into the #873 brake's enforce bad-loop — activated at promote-time
+# (shadow -> enforce) per finding #886: a SHADOW rule emits ::notice::WAS-SHADOW (not ::error::),
+# so this fixture cannot live in test-workflow-policy.sh's `bad-rule*.yml` enforce-only bad-loop
+# yet (that loop asserts exit 1 + exactly one ::error::). When rule7 is promoted to enforce, rename
+# this file to `bad-rule7-no-timeout.yml` (drop the `.shadow-staged` suffix so it matches the
+# `bad-rule*.yml` glob) and add its marker ("no 'timeout-minutes:'") to test-workflow-policy.sh's
+# rule_marker() lookup in the same promotion PR.
+name: bad-rule7-no-timeout
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: bad-rule7-no-timeout-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

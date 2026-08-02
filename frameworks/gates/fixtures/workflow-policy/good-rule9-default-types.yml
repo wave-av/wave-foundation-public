@@ -1,0 +1,20 @@
+# The false-positive control for rule9, and the reason the rule is safe to run fleet-wide.
+# Shape: governance-enforce.yml. Two things here are individually suspicious and jointly fine:
+#   - cancel-in-progress is an EXPRESSION, which rule9 conservatively treats as capable of true; and
+#   - the pull_request trigger omits `types:`, so it gets GitHub's default opened/synchronize/
+#     reopened — every one of which carries a new-or-first head SHA.
+# So two runs can never contend for one commit and there is nothing to strand. If rule9 ever fires
+# on this file it has started flagging the default trigger shape, i.e. nearly every PR workflow in
+# the fleet, and it must not ship.
+name: good-rule9-default-types
+on:
+  pull_request:
+concurrency:
+  group: good-rule9-default-types-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

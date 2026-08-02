@@ -108,7 +108,35 @@ mkdir -p "$(dirname "$CONCERN_MANIFEST")"
 if [ -f ".claude/config/concern-zones.json" ]; then
   # Pre-populate manifest with already-uncommitted files
   MANIFEST_ZONES='{}'
-  while IFS= read -r file; do
+  # ENUMERATE ONCE, and SAY SO WHEN IT FAILS (#944). `done < <(git status --short 2>/dev/null | ...)`
+  # swallowed both the status and the reason, so a git failure produced an EMPTY manifest — which
+  # downstream reads as "no uncommitted files", the opposite of the truth in the case that matters.
+  #
+  # This is a session-start hook, not a gate: it must never abort the session, so the failure is
+  # WARNED and the manifest is still written. Empty is otherwise legitimate (a clean tree).
+  #
+  # -z is not just hygiene here: `git status --short` QUOTES paths containing non-ASCII or spaces,
+  # and the old `awk '{print $2}'` also took only the second whitespace field — so `R old -> new`
+  # renames and any path with a space were recorded under a truncated or non-existent filename, and
+  # therefore zoned wrong. -z with the XY-prefix strip handles both.
+  status_list="$(mktemp)"
+  chmod 0600 "$status_list"
+  if ! git status --porcelain -z >"$status_list" 2>/dev/null; then
+    echo "session-start-context: WARNING — could not read git status; the concern manifest is EMPTY because the read failed, not because the tree is clean." >&2
+  fi
+  while IFS= read -r -d '' entry; do
+    # porcelain -z entries are "XY <path>". A RENAME/COPY additionally emits its SOURCE path as the
+    # next NUL-terminated field, with no XY prefix — measured:
+    #     R  new.txt \0 old.txt \0 A  spa ced.txt \0
+    # so it must be consumed explicitly. Testing "does this field look like it has an XY prefix"
+    # does not work: on the bare source "old.txt", ${entry:0:2} is "ol", which is non-empty, and
+    # ${entry:3} would then record the file as "txt".
+    xy="${entry:0:2}"
+    file="${entry:3}"
+    case "$xy" in
+      R* | C*) IFS= read -r -d '' _rename_src || true ;;   # discard the source path
+    esac
+    [ -n "$file" ] || continue
     [ -z "$file" ] && continue
     zone="unknown"
     case "$file" in
@@ -128,7 +156,8 @@ if [ -f ".claude/config/concern-zones.json" ]; then
     esac
     MANIFEST_ZONES=$(echo "$MANIFEST_ZONES" | jq --arg z "$zone" --arg f "$file" \
       '.[$z] = ((.[$z] // []) + [{"file": $f, "ts": "pre-existing"}])' 2>/dev/null || echo "$MANIFEST_ZONES")
-  done < <(git status --short 2>/dev/null | awk '{print $2}')
+  done <"$status_list"
+  rm -f "$status_list"
 
   ZONE_COUNT=$(echo "$MANIFEST_ZONES" | jq 'keys | length' 2>/dev/null || echo "0")
   echo "{\"touched\":$MANIFEST_ZONES,\"last_zone\":\"\",\"zone_count\":$ZONE_COUNT,\"session_start\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >"$CONCERN_MANIFEST"

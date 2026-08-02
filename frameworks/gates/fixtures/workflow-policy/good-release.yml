@@ -1,0 +1,13 @@
+name: good-release
+on:
+  push:
+    tags:
+      - "v*"
+concurrency:
+  group: good-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo ok

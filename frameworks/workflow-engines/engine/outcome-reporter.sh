@@ -294,8 +294,23 @@ generate_summary() {
   local failure=0
   local partial=0
 
+  # ENUMERATE ONCE, and DISTINGUISH the two zeros (#944). `done < <(find ... 2>/dev/null)` swallowed
+  # the status and the 2>/dev/null swallowed the reason, so a missing or unreadable $REPORTS_DIR
+  # produced "Total Runs: 0 … Success Rate: 0%" — identical to a period in which nothing ran.
+  #
+  # This is a REPORTER, not a gate, so the failure is reported and the summary still prints; the
+  # point is that "no runs" and "could not read the reports" stop looking the same. An empty
+  # $REPORTS_DIR is a legitimate state (no workflow has run yet) and is NOT an error.
+  local report_list
+  report_list="$(mktemp)"
+  chmod 0600 "$report_list"
+  if ! find "$REPORTS_DIR" -name "*.json" >"$report_list" 2>/dev/null; then
+    echo "outcome-reporter: WARNING — could not enumerate '$REPORTS_DIR'. The counts below are from an" >&2
+    echo "  incomplete scan and must not be read as 'no runs in this period'." >&2
+  fi
+
   # Count reports on or after the cutoff date (compare the YYYY-MM-DD prefix of each
-  # report's ISO timestamp). Process-substitution keeps the counters in this shell.
+  # report's ISO timestamp).
   while read -r file; do
     local status report_date
     status=$(jq -r '.status' "$file")
@@ -308,7 +323,8 @@ generate_summary() {
       "failure") ((failure++)) ;;
       "partial") ((partial++)) ;;
     esac
-  done < <(find "$REPORTS_DIR" -name "*.json" 2>/dev/null)
+  done <"$report_list"
+  rm -f "$report_list"
 
   cat <<EOF
 Workflow Summary Report
