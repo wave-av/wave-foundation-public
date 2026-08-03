@@ -342,7 +342,10 @@ should_process() {
 }
 
 combine_context() {
-  local IFS=$'\n'
+  # The rule's own advice is "don't set it globally". This is `local`, scoped to
+  # this function, and is the standard idiom for joining "$*" on newlines — it
+  # never escapes into the caller's shell.
+  local IFS=$'\n' # nosemgrep: ifs-tampering
   echo "$*"
 }
 

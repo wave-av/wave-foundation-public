@@ -1,7 +1,7 @@
 # WAVE Pricing & Settlement Standard
 
 > How every WAVE product — dispatch today, SRT/NDI/MoQ/Clips/Edge tomorrow, the next 70 — gets
-> priced and paid, for **humans and autonomous agents alike**, across **every rail**. Consumed via a
+> priced and paid, for **people and autonomous agents alike**, across **every rail**. Consumed via a
 > per-product `pricing.yaml`, not copied. Canonical meter + settlement registry lives here.
 
 ## Why this exists
@@ -18,22 +18,22 @@ billable across all rails, and consistent with every other product — no re-arc
 | Pillar | Question | Where it's answered |
 |--------|----------|---------------------|
 | **Pricing** | *What does it cost?* | platform tiers + canonical meters (this doc) |
-| **Doors** | *Who pays, and how do they reach it?* | human subscription door + agent x402 door |
+| **Doors** | *Who pays, and how do they reach it?* | person-facing subscription door + agent x402 door |
 | **Settlement** | *How is the money collected/settled?* | the WAVE universal delegate (all rails) |
 
 ## Two doors, one meter
 
 Every product is reachable two ways. **They reconcile at the meter/settlement layer — NEVER at the
-subscription layer.** This is what lets one model serve humans and agents, who have opposite needs.
+subscription layer.** This is what lets one model serve people and agents, who have opposite needs.
 
 ```
-HUMAN door  → a WAVE platform tier = a basket of MODULE ENTITLEMENTS + QUOTAS (one bill)
+PEOPLE door → a WAVE platform tier = a basket of MODULE ENTITLEMENTS + QUOTAS (one bill)
 AGENT door  → /.well-known/x402   = accountless, per-use, zero onboarding
                         ↓ both decrement ↓
             the same CANONICAL METER  →  TenantLedger (#80)
 ```
 
-A human broadcaster gets stream-minutes *included* in their tier; an autonomous service hits the same
+A person broadcasting gets stream-minutes *included* in their tier; an autonomous service hits the same
 relay's `/.well-known/x402` and pays per-GB with no account — and **both decrement the same
 `stream_minutes`/`bandwidth_gb` meter**. Usage is unified underneath regardless of door.
 
@@ -62,18 +62,46 @@ match the executed live Stripe migration (#38, [ADR](../../docs/meter-registry-a
 | `stream_minutes` | delivered-minute | sum | $0.005 | $0.0025 (api.video/IVS) | `wave_stream_minutes` |
 | `storage_minutes` | stored-minute-mo | last | $0.01 | $0.005 (CF Stream storage) | `wave_storage_minutes` |
 | `ai_tokens` | token | sum | $0.000015 ($15/1M) | $0.00001125 (GPT-5.5 3:1) | `wave_ai_tokens` |
+| `realtime_tokens` | token | sum | $0.000003 ($3/1M) | $0.0000009 (Cerebras gpt-oss-120b 3:1) | — |
 | `voice_synthesis_minutes` | synth-minute | sum | $0.25 | $0.18 (ElevenLabs) | `wave_voice_minutes`, `voice_minutes` |
 | `transcription_minutes` | transcribed-minute | sum | $0.015 | $0.0062 (AssemblyAI) | `wave_transcription_minutes` |
+| `edge_gpu_hours` | GPU-hour | sum | $0.50 | $0.24 (RunPod RTX-2000-Ada) | `wave_edge_gpu_hours` |
 | `api_calls` | call | sum | *(unpriced)* | *(unpriced)* | `wave_api_calls` |
 
 `decisions` also carries rate-variants (in `meters.json`): x402 $0.001 (10× gas-covering on-chain per-call),
 overage $0.0002 (beyond-quota), premium $0.0005 (dispatch_plus). `ai_tokens` is **passthrough** (Metronome sums
-`amount_usd`, rate_cents=100; the per-token price is applied by the emitter). `voice_minutes` is **deprecated** —
-use `voice_synthesis_minutes` (the descriptive stem dispatch + the live Stripe meter use).
+`amount_usd`, rate_cents=100; the per-token price is applied by the emitter). `realtime_tokens` (EPIC E-RT #109,
+the T2 ultra-fast REMOTE tier — Groq LPU / Cerebras wafer-scale, 200–2600 tok/s) is likewise **passthrough**;
+priced BELOW frontier `ai_tokens` because the models are open-weight — the product is **speed** (real-time AI on
+live video/streaming), not model class. It carries an x402 rate-variant (10× on-chain per-token for pay-as-you-
+stream micropayments). `voice_minutes` is **deprecated** — use `voice_synthesis_minutes` (the descriptive stem
+dispatch + the live Stripe meter use).
 
-## Human platform tiers
+### Pricing GPU compute: capability-tier + region-absorbed (with a region-pinned premium)
 
-ONE human pricing page. The ~76 "products" become **module entitlements + quotas on a tier**, not SKUs.
+`edge_gpu_hours` (Phase C #72, customer on-demand GPU) prices on **capability tier, not location**. The list
+price is **flat *within* a GPU class** (launch = RTX-2000-Ada-class @ $0.50/GPU-hr), and WAVE routes each job to
+the **cheapest healthy backend across regions and keeps the spread** — the customer pays the same rate no matter
+where it ran. This is the right default: customers buy a capability ("an RTX-class GPU-hour"), not a datacenter,
+and absorbing the region spread is how a single clean price stays margin-safe (gate: $0.50 ≥ $0.24 dearest
+covered backend).
+
+Two governed extension points — **add a SKU only when a customer selects it, never speculatively** (each new
+SKU re-clears the margin gate at its own COGS):
+
+- **Region-pinned residency (a selectable premium).** When a customer *needs* their compute pinned to a
+  specific region (data-residency / compliance / latency), that is a distinct SKU per pinned region — e.g.
+  `edge_gpu_hours_eu` — declared in `meters.json` with that region's COGS and a premium list price. This
+  composes with the `data-residency-pinned-at-infrastructure-layer` law: the residency guarantee lives in the
+  infra layer, the price lives here. Region selection is exposed to the customer; the unpinned tier is the
+  cheap default.
+- **Dearer GPU classes.** A40 (~$0.39/hr) / A100 (~$1.19) / H100 (~$2.49+) are **separate tiers**, never folded
+  into the launch flat rate — a single flat price cannot stay margin-safe across a ~10× COGS spread. Each class
+  is its own `meters.json` entry when offered.
+
+## Person-facing platform tiers
+
+ONE person-facing pricing page. The ~76 "products" become **module entitlements + quotas on a tier**, not SKUs.
 
 | Tier | USD/mo | Posture |
 |------|-------:|---------|
@@ -87,7 +115,7 @@ flags (`modules.ndi = true`) and per-meter quotas; beyond quota = metered overag
 from [`meters.json`](./meters.json)** (e.g. `ai_tokens` $15/1M, `voice_synthesis_minutes` $0.25/min,
 `storage_gb` $0.10/GB — all margin-safe). Never invent an overage rate; read it from the registry.
 
-**Human footgun — overage MUST default to capped + alert.** A simple human plan defaults to a hard spend
+**Spend footgun — overage MUST default to capped + alert.** A simple person-facing plan defaults to a hard spend
 ceiling with 80%/100% in-app alerts. Uncapped overage is opt-in, never the default. "Everything included"
 must be honestly bounded.
 
@@ -127,14 +155,14 @@ supported rail and normalizes to the canonical meter + `TenantLedger`. This is a
 
 | Rail | What it is | Payer |
 |------|-----------|-------|
-| `card` | Stripe Checkout / subscriptions | humans (fiat) |
+| `card` | Stripe Checkout / subscriptions | people (fiat) |
 | `x402` | HTTP-402 micropayment, on-chain USDC (Base mainnet) | agents |
 | `acp` | Agent Commerce Protocol | agents |
 | `mpp` | machine-payment protocol | agents |
 | `tempo` | stablecoin payments network | either |
 | `bridge` | fiat ↔ USDC orchestration | either |
-| `privy` | embedded wallet | humans/agents |
-| `cdp` | Coinbase Developer Platform wallet | humans/agents |
+| `privy` | embedded wallet | people/agents |
+| `cdp` | Coinbase Developer Platform wallet | people/agents |
 | `wallet` | generic crypto wallet | either |
 
 Default `rails: [all-via-wave-delegate]` opts a product into the entire set. Centralizing here means a
@@ -144,9 +172,9 @@ ONE audited place, not 85. Per-rail behavior is the WAVE `/verify` contract (dis
 ## Worked examples
 
 - **dispatch** — `standalone` + `control-plane`; agent x402 `decisions` @ $0.0001. Keeps $9/$29/$99 (map
-  the 15k/50k/200k decisions-per-day quotas onto the human tiers, **grandfather** existing buyers 12mo to
+  the 15k/50k/200k decisions-per-day quotas onto the person-facing tiers, **grandfather** existing buyers 12mo to
   avoid a $9→$19 hike). Trust wall intact: WAVE settles, never sees prompts/keys/inference.
-- **SRT / NDI / MoQ** (the case that proves the model) — `module` + `hosted`; human gets included
+- **SRT / NDI / MoQ** (the case that proves the model) — `module` + `hosted`; a person gets included
   `stream_minutes` in their WAVE tier; agent hits the relay's `/.well-known/x402` and pays per
   `bandwidth_gb`; both decrement the same meters. (MoQ relay may also stand alone with $/GB COGS pricing.)
 - **A future protocol** — declares the 5 fields, picks a canonical meter (or proposes a new one here),

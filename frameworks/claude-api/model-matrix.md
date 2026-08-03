@@ -23,7 +23,7 @@
 | **Effort default** | `high` | `high` | `high` | n/a |
 | **`thinking.display` default** | `omitted` | `omitted` | `summarized` | `summarized` |
 | **Last-assistant prefill** | ❌ **400** | ❌ **400** | ❌ **400** | accepted |
-| **Min cacheable prefix** | **1,024** (see nuance) | 4,096 | 1,024 | 4,096 |
+| **Min cacheable prefix** | **1,024** (see nuance) | **2,048** | 1,024 | 4,096 |
 | **Structured outputs** | ✅ GA | ✅ GA | ✅ GA | ✅ GA |
 | **Prior-thinking retention** | all turns kept | all turns kept | all turns kept | last turn only |
 
@@ -132,15 +132,17 @@ add `"ttl":"1h"` for the 1-hour cache.
 
 | Model | Min prefix |
 |---|---|
+| `claude-fable-5` | **512** (1,024 on Bedrock) |
 | `claude-opus-4-8` | **1,024** |
-| `claude-opus-4-7` / 4.6 / 4.5 | 4,096 |
+| `claude-opus-4-7` | **2,048** |
+| `claude-opus-4-6` / 4.5 | 4,096 |
 | `claude-sonnet-4-6` | 1,024 |
 | `claude-haiku-4-5` | 4,096 |
 
-> **Nuance — opus-4-8 = 1,024, not 4,096.** The live caching doc groups `claude-opus-4-8` with the
-> 1,024 tier (alongside Sonnet 4.6), **separate** from the Opus 4.7/4.6/4.5 group at 4,096. Older
-> cached capability tables said 4,096 for all Opus — **the live doc's 1,024 is authoritative for
-> opus-4-8.** Below the threshold the prompt is *silently uncached* (no error).
+> **Nuance — four tiers, not two.** The live caching doc splits min-prefix four ways: **Fable 5 = 512**
+> (1,024 on Bedrock), **opus-4-8 + Sonnet 4.6 = 1,024**, **opus-4-7 = 2,048**, **opus-4.6/4.5 + Haiku 4.5
+> = 4,096**. Older cached capability tables lumped all Opus at 4,096 — wrong for 4.8 (1,024) **and** 4.7
+> (2,048); the live doc is authoritative. Below the threshold the prompt is *silently uncached* (no error).
 
 - ✅ **Verify** a hit via `usage.cache_read_input_tokens > 0`; a write via
   `usage.cache_creation_input_tokens > 0`. If **both are 0**, the prefix was under the minimum.
@@ -151,7 +153,8 @@ add `"ttl":"1h"` for the 1-hour cache.
 
 ```python
 # Pad short prefixes to the model minimum so caching actually engages
-MIN_PREFIX = {"claude-opus-4-8": 1024, "claude-sonnet-4-6": 1024, "claude-haiku-4-5": 4096}
+MIN_PREFIX = {"claude-fable-5": 512, "claude-opus-4-8": 1024, "claude-opus-4-7": 2048,
+              "claude-sonnet-4-6": 1024, "claude-opus-4-6": 4096, "claude-haiku-4-5": 4096}
 assert resp.usage.cache_read_input_tokens or resp.usage.cache_creation_input_tokens, \
     "prefix under min cacheable size — not cached"
 ```
@@ -197,7 +200,7 @@ GA on Opus 4.8/4.7/4.6, Sonnet 4.6/4.5, Opus 4.5, Haiku 4.5 (Claude API). Use
   `output_config.format`.
 - ❌ `effort` on Haiku 4.5, or `xhigh` on Sonnet 4.6 → unsupported value.
 - ❌ Reading `block.thinking` on Opus 4.8 without `display:"summarized"` → silently empty.
-- ❌ Assuming opus-4-8 min cacheable prefix is 4,096 (it's **1,024**) → wasted, silently-uncached padding.
+- ❌ Assuming opus-4-8 min cacheable prefix is 4,096 (it's **1,024**) — or opus-4-7 is 4,096 (it's **2,048**), or Fable 5 is 1,024 (it's **512**) → wasted, silently-uncached padding.
 - ❌ Date-suffixing an alias (`claude-opus-4-8-2026...`) or hardcoding a model literal in code.
 - ❌ Non-streaming a `max_tokens > 16000` call → SDK timeout risk.
 - ❌ Bypassing the gateway to hit Anthropic directly (loses observability, billing aggregation, retry).

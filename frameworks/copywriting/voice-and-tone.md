@@ -55,7 +55,7 @@ other ("humans welcome too"); that reads cold and othering. "People" centers the
 - ❌ "for humans and agents" · "humans can also use it" · "a human authenticates with a key"
 
 **Allowed (deliberate, not othering) — these pass the gate:**
-- The idiom **"no human in the loop"** (agent-autonomy contrast, not a description of the reader).
+- The architecture term **"human-in-the-loop"** (HITL — a human *approval step*, the same kind of term as "human review"; this also covers the "no human in the loop" agent-autonomy idiom). Neither describes the reader.
 - The legal terms **"human review"** / **"human oversight"** (GDPR Art. 22 / EU AI Act term-of-art).
 - **"human-readable"** (standard technical term, counterpart to machine-readable).
 - Identifiers / const names / id-slugs and code comments (not user-facing copy).

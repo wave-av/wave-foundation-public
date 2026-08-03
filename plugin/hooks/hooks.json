@@ -99,6 +99,11 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/doppler-secrets-cache.sh\"",
             "timeout": 12,
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/intent-ledger-surface.sh\"",
+            "timeout": 10
           }
         ]
       }
@@ -123,18 +128,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/task-export.sh\"",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/task-export.sh\"",
-            "timeout": 10
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/intent-ledger-capture.sh\"",
+            "timeout": 25
           }
         ]
       }

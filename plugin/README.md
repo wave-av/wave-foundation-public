@@ -38,12 +38,21 @@ claude plugin install wave-av/wave-foundation
 | `/plan-audit` | Post-implementation audit — 7 modes (smoke → comprehensive) |
 | `/wave-execute` | Execute tasks wave-by-wave with milestone gates (tsc + lint) |
 
+### Agents (invoked via the Task/Agent tool)
+
+| Agent | Purpose | Requires |
+|-------|---------|----------|
+| `codebase-analyzer` | Read-only pattern/architecture discovery across the codebase | `serena` MCP server (symbol-nav) — see [Serena L2 activation](../docs/serena-l2-activation.md) |
+| `type-fixer` | Fixes TypeScript type errors at root cause (no `@ts-ignore`/`any`) | `serena` MCP server (symbol-nav) — see [Serena L2 activation](../docs/serena-l2-activation.md) |
+
+Both agents default to symbol tools (`mcp__serena__find_symbol`, `get_symbols_overview`, `find_referencing_symbols`, and — for `type-fixer` — `replace_symbol_body`) for reading/editing one function instead of a whole file, keeping `Read` for cases that genuinely need full-file context. The `serena` server itself is NOT bundled by this plugin — it's wired per-consuming-repo via that repo's own root `.mcp.json` (a plugin cannot ship a working MCP server config with repo-relative `--project` paths; see `wave-mcp/.mcp.json`'s own doc comment for why).
+
 ## What Does NOT Ship (keep in source repos)
 
 - Project-specific CLAUDE.md rules
-- MCP server configurations (`.mcp.json`)
+- MCP server *configurations* (`.mcp.json`) — the plugin's agents can *reference* MCP tools (see Agents above), but the server wiring itself is repo-specific and lives in each consuming repo's own `.mcp.json`
 - Product-specific tokens (design-system files)
-- Agent definitions (AGENTS.md)
+- Cross-tool agent instruction files (`AGENTS.md`) — distinct from the `agents/` subagent definitions this plugin does ship
 
 ## Discovery Convention (added 2026-05-29 — PR N)
 
@@ -80,6 +89,9 @@ plugin/
     plan-to-action/SKILL.md
     plan-audit/SKILL.md
     wave-execute/SKILL.md
+  agents/
+    codebase-analyzer.md
+    type-fixer.md
 ```
 
 ## Version Pinning

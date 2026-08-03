@@ -36,11 +36,34 @@ CACHE_RE='cache_control|cacheControl'
 # var keeps false positives low (only flags concatenation with a separator literal).
 FOLD_RE='(^|[^A-Za-z_])(sys|system)[[:space:]]*\+[[:space:]]*["'"'"']'
 
+# ENUMERATE ONCE, FAIL CLOSED (#944). `done < <(git ls-files)` cannot propagate the lister's status,
+# so a git failure left files=() and the lint printed its ✓ line having read nothing. Vendored into
+# spoke repos, so the blast radius is every consumer.
+#
+# Two fail-open paths here, not one. The `elif git rev-parse` guard means that OUTSIDE a git repo
+# the whole enumeration is skipped and the lint passes silently — which reads as "no violations"
+# and is really "no input". With no args and no repo there is nothing this lint can be asserting,
+# so that is now an error rather than a pass.
 files=()
 if [ "$#" -gt 0 ]; then
   files=("$@")
-elif git rev-parse --git-dir >/dev/null 2>&1; then
-  while IFS= read -r f; do files+=("$f"); done < <(git ls-files)
+else
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "cache-control-lint: ✗ not inside a git repository and no file arguments given — nothing to scan. Refusing to report a pass over zero files." >&2
+    exit 2
+  fi
+  list="$(mktemp)"
+  chmod 0600 "$list"
+  trap 'rm -f "$list"' EXIT
+  if ! git ls-files -z >"$list"; then
+    echo "cache-control-lint: ✗ git ls-files FAILED — refusing to report a pass over an enumeration that never happened." >&2
+    exit 2
+  fi
+  if [ ! -s "$list" ]; then
+    echo "cache-control-lint: ✗ enumerated 0 tracked files. git succeeded, so this is a working-directory problem — refusing to report a pass." >&2
+    exit 2
+  fi
+  while IFS= read -r -d '' f; do files+=("$f"); done <"$list"
 fi
 
 findings=0
