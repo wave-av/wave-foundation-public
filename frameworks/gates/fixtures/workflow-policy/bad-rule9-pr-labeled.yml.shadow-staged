@@ -1,0 +1,17 @@
+# STAGED (rule9 is SHADOW) — see the rule9 section of test-workflow-policy.sh for why.
+# Shape: auto-approve.yml as it stood before #1020. Both `labeled` and `ready_for_review` fire at an
+# unchanged head SHA. This one had never bitten in production — the workflow is dormant unless
+# AUTO_APPROVE_ENABLED == '1' — which is the point of having a rule rather than fixing what hurts.
+name: bad-rule9-pr-labeled
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened, ready_for_review]
+concurrency:
+  group: bad-rule9-pr-labeled-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

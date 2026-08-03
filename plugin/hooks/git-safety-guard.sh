@@ -42,7 +42,7 @@ while IFS= read -r seg; do
 
   # reset --hard / --keep (flags may sit between `reset` and the option)
   printf '%s' "$s" | grep -qE '^git[[:space:]].*\breset\b' && printf '%s' "$s" | grep -qE -- '(--hard|--keep)\b' &&
-    deny "BLOCKED: git reset --hard/--keep discards the working tree and can orphan commits (the 2026-05-28 incident). Use 'git stash' or a soft/mixed reset; if truly intended, run it yourself in a terminal."
+    deny "BLOCKED: git reset --hard/--keep discards the working tree and can orphan commits (the 2026-05-28 incident). Commit to a branch (durable, auto-anchored to wip/anchor/*) or use a soft/mixed reset; 'git stash' can be silently lost. If truly intended, run it yourself in a terminal."
 
   # force push — long flags OR any combined short-flag cluster containing f (-f, -uf, -fu)
   printf '%s' "$s" | grep -qE '^git[[:space:]].*\bpush\b' &&
@@ -61,7 +61,7 @@ while IFS= read -r seg; do
   # forced checkout/switch
   printf '%s' "$s" | grep -qE '^git[[:space:]].*\b(checkout|switch)\b' &&
     printf '%s' "$s" | grep -qE -- '([[:space:]]-[A-Za-z]*f[A-Za-z]*\b|--force|--discard-changes)' &&
-    deny "BLOCKED: forced checkout/switch discards uncommitted changes. Commit or stash first; on a shared checkout prefer 'git worktree add' for a new branch."
+    deny "BLOCKED: forced checkout/switch discards uncommitted changes. Commit first (durable); on a shared checkout prefer 'git worktree add' for a new branch."
 
   # direct ref deletion
   printf '%s' "$s" | grep -qE '^git[[:space:]].*\bupdate-ref\b' && printf '%s' "$s" | grep -qE -- '[[:space:]]-d\b' &&

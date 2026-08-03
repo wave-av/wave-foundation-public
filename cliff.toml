@@ -36,5 +36,16 @@ commit_parsers = [
   { message = "^chore", skip = true },
   { message = ".*", group = "Other" },
 ]
-tag_pattern = "v[0-9]*"
+# Every release-tag FAMILY in this repo, not just the top-level one. a835497b narrowed this to
+# `^v[0-9]+\.[0-9]+\.[0-9]+$` to "scope git-cliff to semver release tags", and the effect was that
+# git-cliff stopped seeing the `spoke-chassis-vX.Y.Z` and `content-hash-vX.Y.Z` tags as version
+# boundaries at all. Since `-o` rewrites the whole file from what it can see, those 43 sections
+# became unreproducible: the very next cut (v1.12.0, same day) wrote a CHANGELOG without them.
+#
+# Measured on a fully-tagged checkout: the narrow pattern emits 23 sections, this one emits 66 —
+# exactly the number the file actually has. Narrowing what a GENERATOR can see silently narrows
+# what it will KEEP, because regeneration is not additive.
+# The X.Y.Z shape is required so this does NOT match the moving major tag `v1`, which would
+# otherwise produce a bogus `## [1]` section covering the entire history.
+tag_pattern = "(v|[a-z-]+-v)[0-9]+\\.[0-9]+\\.[0-9]+$"
 sort_commits = "oldest"

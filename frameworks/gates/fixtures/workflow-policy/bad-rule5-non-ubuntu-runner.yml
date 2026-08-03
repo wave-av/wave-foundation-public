@@ -1,0 +1,11 @@
+name: bad-rule5-non-ubuntu-runner
+on:
+  pull_request:
+concurrency:
+  group: bad-rule5-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - run: echo ok

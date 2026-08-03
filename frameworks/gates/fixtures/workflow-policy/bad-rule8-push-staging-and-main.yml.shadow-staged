@@ -1,0 +1,20 @@
+# STAGED, not wired into the #873 brake's enforce bad-loop — rule8 is SHADOW (see check_fn:rule8 in
+# checks.yml), so it emits ::notice::WAS-SHADOW (not ::error::) and this fixture cannot live in
+# test-workflow-policy.sh's `bad-rule*.yml` enforce-only bad-loop (that loop asserts exit 1 + exactly
+# one ::error::). Exercised instead by the dedicated rule8-shadow-fixtures section.
+name: bad-rule8-push-staging-and-main
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - staging
+concurrency:
+  group: bad-rule8-push-staging-and-main-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

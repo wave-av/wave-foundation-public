@@ -14,6 +14,7 @@ name: ratchet (lint-debt)
 on:
   pull_request:
   workflow_dispatch:
+  merge_group: # shell + python ratchet are required checks — must run on the merge-queue group
 
 concurrency:
   group: ratchet-${{ github.head_ref || github.ref }}
@@ -25,13 +26,13 @@ permissions:
 jobs:
   shell:
     name: shell ratchet
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # pip installs shellcheck-py from PyPI
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0 # need history for the merge-base diff
           persist-credentials: false
@@ -43,44 +44,44 @@ jobs:
         run: pip install --user shellcheck-py==0.11.0.1
       - name: Shell ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           [ -f scripts/shell-check-changed.sh ] || { echo "::notice::shell ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/shell-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/shell-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci
 
   python:
     name: python ratchet
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # uvx fetches the pinned ruff from PyPI
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Python ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           [ -f scripts/python-check-changed.sh ] || { echo "::notice::python ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/python-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/python-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci
 
   cpp:
     name: cpp ratchet
     # DORMANT until native code lands (see header). cppcheck does whole-file analysis with no compile
     # database, so the gate works the instant the first C/C++ file appears; clang-tidy (needs
     # compile_commands.json from a real build) is the deeper scheduled oracle — TODO in docs/ratchet.md.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # apt fetches cppcheck
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -92,22 +93,22 @@ jobs:
           sudo apt-get install -y cppcheck
       - name: Cpp ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           [ -f scripts/cpp-check-changed.sh ] || { echo "::notice::cpp ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/cpp-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/cpp-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci
 
   rust:
     name: rust ratchet
     # DORMANT until a Cargo crate lands (see header). clippy must compile the crate, so it runs per
     # Cargo workspace; with no Cargo.toml the script is a clean no-op over zero changed *.rs.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # rustup component add clippy
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -115,45 +116,45 @@ jobs:
         run: rustup component add clippy
       - name: Rust ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           [ -f scripts/rust-check-changed.sh ] || { echo "::notice::rust ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci
 
   go:
     name: go ratchet
     # DORMANT until a Go module lands (see header). `go vet` must compile the package, so it runs per
     # go.mod module; with no go.mod the script is a clean no-op over zero changed *.go. Go is
     # preinstalled on ubuntu-latest — vet needs no extra component (unlike clippy).
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # go may fetch modules from the proxy when a module lands
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Go ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           [ -f scripts/go-check-changed.sh ] || { echo "::notice::go ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/go-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/go-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci
 
   ruby:
     name: ruby ratchet
     # DORMANT until Ruby lands (see header). rubocop does whole-file analysis with no build, so the
     # gate works the instant the first *.rb appears; with zero *.rb it is a clean no-op. When
     # activating in a Ruby repo, PIN the rubocop version here + regenerate the baseline for parity.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit # gem fetches rubocop from RubyGems
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -163,8 +164,8 @@ jobs:
         run: gem install --user-install --no-document rubocop
       - name: Ruby ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
           [ -f scripts/ruby-check-changed.sh ] || { echo "::notice::ruby ratchet script absent (public mirror) — skipping"; exit 0; }
-          bash scripts/ruby-check-changed.sh --base "${BASE_SHA:-origin/master}" --ci
+          bash scripts/ruby-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci

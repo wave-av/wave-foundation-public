@@ -1,7 +1,7 @@
 // provision-inbound.ts
 //
 // Create a Resend inbound route for a tenant. The webhook URL is FORCED to
-// https://dispatch.wave.online/v1/inbound/<tenant_id> — callers cannot override it,
+// https://email.wave.online/v1/inbound/<tenant_id> — callers cannot override it,
 // which prevents a tenant from being mis-routed to another tenant's worker.
 
 import {
@@ -38,7 +38,7 @@ export async function provisionTenantInboundRoute(
   }
 
   const inboundAddress = `${input.tenant_id}@${baseDomain}`;
-  const webhookUrl = `https://dispatch.wave.online/v1/inbound/${encodeURIComponent(input.tenant_id)}`;
+  const webhookUrl = `https://email.wave.online/v1/inbound/${encodeURIComponent(input.tenant_id)}`;
 
   let res: Response;
   try {
