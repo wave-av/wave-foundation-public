@@ -46,13 +46,15 @@ while IFS= read -r f; do
   grep -qiE 'not the headline|labeled honestly|labeled, not implied|truthful by construction|notes? to (us|self|ourselves)' "$f" \
     && report ERROR "$f" "meta-copy — internal note/strategy memo leaking into public copy"
   # Voice: "people"/second person, not "humans" (voice-and-tone.md §human⇄agent taxonomy). Flags
-  # user-facing "human/humans" EXCEPT: the "no human in the loop" idiom; the GDPR / EU-AI-Act legal
+  # user-facing "human/humans" EXCEPT: the "human-in-the-loop" term-of-art (HITL — an approval step, like
+  # "human review"; covers the "no human in the loop" autonomy idiom too); the GDPR / EU-AI-Act legal
   # terms "human review"/"human oversight"; the "human-readable" technical term; typography words
   # (humanist/humanize); identifiers/const/id-slugs (HUMANS_*, *-humans-*, "human", .human); and code
   # comment lines (//, *, #, <!--). grep -n prefixes "NN:" so the comment skip anchors on that.
+  # KEEP THIS ALLOWLIST IN SYNC with the .github/workflows/checks.yml "voice" job (same regex, two enforcers).
   if grep -niE '\bhumans?\b' "$f" \
        | grep -vE '^[0-9]+:[[:space:]]*(//|\*|#|/\*|<!--)' \
-       | grep -qivE 'no human.?in.?the.?loop|human review|human oversight|human-read|humanis|humaniz|HUMANS?_|_HUMANS?|-humans?-|"human"|\.human\b'; then
+       | grep -qivE 'human.?in.?the.?loop|human review|human oversight|human-read|humanis|humaniz|HUMANS?_|_HUMANS?|-humans?-|"human"|\.human\b'; then
     report ERROR "$f" "'human/humans' in marketing copy — use 'people' or second person (voice-and-tone.md)"
   fi
   # WARN severity — buzzwords / unsubstantiated (review, don't block)

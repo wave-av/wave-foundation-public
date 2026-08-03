@@ -1,0 +1,17 @@
+# STAGED (rule9 is SHADOW) — see the rule9 section of test-workflow-policy.sh for why.
+# Shape: semantic-pr.yml as it stood before #1020. `edited` fires when a PR is retitled or its body
+# changes, neither of which moves the head SHA, so a re-fire cancels a run pinned to the same
+# commit. This exact shape produced FIVE dead `cancelled` check-runs on PR #1042's head.
+name: bad-rule9-pr-edited
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+concurrency:
+  group: bad-rule9-pr-edited-${{ github.head_ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

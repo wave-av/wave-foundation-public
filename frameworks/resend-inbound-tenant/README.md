@@ -25,9 +25,9 @@ const route = await provisionTenantInboundRoute({
   base_domain: "inbound.wave.online",
 });
 // Persist route.route_id + route.webhook_secret (encrypted) per tenant.
-// route.webhook_url is always https://dispatch.wave.online/v1/inbound/<tenant_id>.
+// route.webhook_url is always https://email.wave.online/v1/inbound/<tenant_id>.
 
-// 2) In the inbound webhook handler at dispatch.wave.online/v1/inbound/:tenant_id:
+// 2) In the inbound webhook handler at email.wave.online/v1/inbound/:tenant_id:
 const email = await verifyInboundWebhook({
   tenant_id,
   webhook_secret: tenantWebhookSecret,  // from Doppler tenant-namespace
