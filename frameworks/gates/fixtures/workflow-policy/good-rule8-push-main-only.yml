@@ -1,0 +1,15 @@
+name: good-rule8-push-main-only
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+concurrency:
+  group: good-rule8-push-main-only-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

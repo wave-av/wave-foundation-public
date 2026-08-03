@@ -1,16 +1,6 @@
-# File-Size Gate (two-tier)
+# File-Size Gate → see file-size-limits.md
 
-Harvested from an internal WAVE repo's `.claude/rules/35-file-size/`. Small files = fast AI reads = composable.
+Canonical: **[file-size-limits.md](./file-size-limits.md)** — the two-tier gate (soft 500 / hard 800),
+category limits, the splitting pattern, and the full write → commit → PR → review enforcement chain.
 
-| Gate | Limit | Behavior |
-|------|-------|----------|
-| **Soft** | 500 lines | Warning. Next feature goes in a new file. Stop adding. |
-| **Hard** | 800 lines | BLOCK. Split before merge. No exceptions. |
-
-Exceptions: `*.types.ts`, `*.d.ts`, generated files, event registries.
-
-**Enforcement layers:** rule (AI sees before writing) → pre-commit hook (hard gate) → CI (hard gate) →
-review tools (soft gate warning). Dispatch's `eval_gate.py` already enforces this — it's the reference impl.
-
-**Why:** 300-line files use ~84% less context than 1800-line ones; smaller blast radius; faster review;
-LEGO-block composability.
+This file is a pointer to avoid drift (it was a duplicate two-tier summary).

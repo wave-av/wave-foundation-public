@@ -12,12 +12,24 @@ permissions:
 
 concurrency:
   group: semantic-pr-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  # MUST stay false (#1020). `edited` fires without changing the head SHA, so a re-fire cancels a
+  # run that is pinned to the SAME commit — and a `cancelled` check-run never clears. Measured on
+  # PR #1042: six runs in 34 seconds, all on head 8ec8861, five cancelled. GitHub itself is fine
+  # with that (required-context evaluation takes the latest, so mergeStateStatus reads CLEAN), but
+  # anything asking "are there red checks on this commit?" counts `cancelled` as not-green — it
+  # cannot know the cancellation was a supersede rather than a real abort — so the merge-premise
+  # guard refuses the merge until someone reruns the dead run by hand.
+  #
+  # Narrowing the `group:` does NOT fix this, which is the non-obvious part: all six runs share one
+  # head SHA, so adding the SHA to the group leaves them in the same group still cancelling
+  # each other. Only not-cancelling fixes it. The group is kept so re-fires serialise instead of
+  # racing; the cost is a few seconds of a title lint that had nothing worth cancelling anyway.
+  cancel-in-progress: false
 
 jobs:
   validate-title:
     name: Validate PR Title
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read # REQUIRED for actions/checkout in the parity step — a job-level permissions block
       # replaces the workflow default entirely, so without this the token has no repo access and the
@@ -44,7 +56,7 @@ jobs:
       # the rule CI enforces. If this and the amannn action above ever disagree, the rules have drifted —
       # fix the script, not just the YAML. Advisory like the rest of this workflow (continue-on-error).
       - name: Checkout (for the shared validator)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false # we only need the file tree; never reuse GITHUB_TOKEN
       - name: Validate title with the shared script (parity with local hook)
