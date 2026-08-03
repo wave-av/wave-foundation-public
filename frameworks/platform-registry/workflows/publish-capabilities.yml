@@ -45,9 +45,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Confirm capabilities.json exists
+        # The input is read from the environment, never spliced into the script
+        # text: a workflow input is data, and `run:` interpolation makes it code.
+        env:
+          CAPABILITIES_PATH: ${{ inputs.capabilities_path }}
         run: |
-          if [ ! -f "${{ inputs.capabilities_path }}" ]; then
-            echo "::error::missing ${{ inputs.capabilities_path }} — see wave-foundation/frameworks/platform-registry/README.md"
+          if [ ! -f "$CAPABILITIES_PATH" ]; then
+            echo "::error::missing $CAPABILITIES_PATH — see wave-foundation/frameworks/platform-registry/README.md"
             exit 1
           fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 # zizmor: ignore[cache-poisoning]

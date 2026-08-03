@@ -25,7 +25,7 @@ const validInput = {
 };
 
 describe("provisionTenantInboundRoute", () => {
-  it("happy path forces webhook URL to dispatch.wave.online/v1/inbound/<tenant>", async () => {
+  it("happy path forces webhook URL to email.wave.online/v1/inbound/<tenant>", async () => {
     let seenBody: any;
     const fetchImpl = vi.fn().mockImplementation(async (_url: string, init: any) => {
       seenBody = JSON.parse(init.body);
@@ -39,8 +39,8 @@ describe("provisionTenantInboundRoute", () => {
       } as Response;
     }) as any;
     const r = await provisionTenantInboundRoute(validInput, fetchImpl);
-    expect(r.webhook_url).toBe("https://dispatch.wave.online/v1/inbound/acme");
-    expect(seenBody.webhook_url).toBe("https://dispatch.wave.online/v1/inbound/acme");
+    expect(r.webhook_url).toBe("https://email.wave.online/v1/inbound/acme");
+    expect(seenBody.webhook_url).toBe("https://email.wave.online/v1/inbound/acme");
     expect(r.inbound_address).toBe("acme@inbound.wave.online");
   });
 
