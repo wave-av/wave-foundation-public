@@ -1,0 +1,15 @@
+name: good-per-commit
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: good-per-commit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

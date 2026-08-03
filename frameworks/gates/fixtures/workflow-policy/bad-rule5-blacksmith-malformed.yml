@@ -1,0 +1,16 @@
+name: bad-rule5-blacksmith-malformed
+# rule5 negative case for the Blacksmith widening: `runs-on` is UNTRUSTED caller YAML (checks.yml
+# lints the CALLING repo's workflows), so the allowlist must be an ANCHORED enumeration. A label
+# that merely starts with "blacksmith-" — wrong vcpu count, wrong OS, junk suffix — must still be
+# rejected. If this fixture ever passes, the widening has rotted into a prefix match.
+on:
+  pull_request:
+concurrency:
+  group: bad-rule5-blacksmith-malformed-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: blacksmith-monster-64vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
