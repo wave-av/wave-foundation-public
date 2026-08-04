@@ -1,0 +1,21 @@
+frameworks/codec-watch/scripts/check-libavm.sh
+  s_124891ed63801b::t_a51410c00d840e 20-25
+frameworks/codec-watch/README.md
+  s_124891ed63801b::t_1a44b9120417bc 35-36,39-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "cb91b3e740c33f4d8a8f67b4896e3e331037dc15",
+  "prompts": {},
+  "sessions": {
+    "s_124891ed63801b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "657e721e-b9b4-4e0f-b7bb-049f27115a75",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
