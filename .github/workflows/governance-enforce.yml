@@ -43,6 +43,14 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           BASE="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+              && ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            # Force-push: github.event.before is a real SHA whose commit may no longer be
+            # reachable (unreachable objects aren't fetched even with fetch-depth: 0). Treat it
+            # as indeterminate rather than handing the enforcer a bad object.
+            echo "::warning::diff base $BASE is not a reachable commit (force-push?); treating base as indeterminate"
+            BASE=""
+          fi
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             # Indeterminate base (first push / force-push). Do NOT silently scan a partial range —
             # HEAD~1 would skip earlier commits in a multi-commit push and let a violation through
