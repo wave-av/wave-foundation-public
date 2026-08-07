@@ -32,11 +32,13 @@ weekly (Wednesday 06:00 UTC) and on `workflow_dispatch`.
 
 ## What it does
 
-1. Fetches the latest tag list from `https://github.com/FFmpeg/FFmpeg.git` via
+1. Fetches the latest tag list from `https://git.ffmpeg.org/ffmpeg.git` (the
+   canonical Forgejo repo — github.com/FFmpeg/FFmpeg is a downstream mirror) via
    `git ls-remote --tags` — no clone, no checkout, just the SHA list.
 2. Greps for any tag matching `^n8\.[2-9]` or `^n[9-9]\.` (8.2+, 9.x+).
-3. Falls back to the `master` branch HEAD's `configure` script to detect when
-   `--enable-libavm` becomes a real flag (currently it's not yet in upstream).
+3. Falls back to `code.ffmpeg.org`'s raw-file endpoint for the `master` branch
+   HEAD's `configure` script to detect when `--enable-libavm` becomes a real
+   flag (currently it's not yet in upstream).
 4. If either signal trips, opens or updates a sticky issue tagged
    `codec-watch:libavm` with the version + link to the upstream release notes.
 5. If neither signal trips, it closes any existing sticky issue (so we don't
