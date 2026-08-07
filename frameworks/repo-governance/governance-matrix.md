@@ -16,7 +16,7 @@ benefit-led; **agent** docs are terse and contract-led (the human⇄agent taxono
 | `AGENTS.md` | ✅ | ✅ | agent | How an agent should work in this repo (build/test/gates/PR rules). Org default covers repos without one. |
 | `SECURITY.md` | ✅ | ✅ | human | Vuln-reporting policy (private: internal channel; public: <security@wave.online> + disclosure window). |
 | `CODEOWNERS` | ✅ | ✅ | — | Review routing; backs the CODEOWNERS-review gate. |
-| `.coderabbit.yaml` | ✅ | ✅ | — | Review automation (auto_approve within limits). |
+| `.coderabbit.yaml` | ✅ | ✅ | — | Review automation (CodeRabbit review config; approvals are vendor-side, not set here). |
 | `CHANGELOG.md` | ✅ | ✅ | human | [Keep a Changelog](https://keepachangelog.com); `Unreleased` section maintained. |
 | `.github/ISSUE_TEMPLATE/` + `PULL_REQUEST_TEMPLATE.md` | ✅ | ✅ | human | Org default applies unless overridden. |
 | `LICENSE` | — | ✅ | — | **P0 for public.** SPDX-identified. |
@@ -32,7 +32,8 @@ benefit-led; **agent** docs are terse and contract-led (the human⇄agent taxono
 
 Multiple **independent** gate types, so a single failure mode never passes unnoticed. Branch protection is
 applied via an **org-level ruleset** (PR required · required status checks · `enforce_admins` on · ≥0
-approving reviews, satisfied by the CodeRabbit auto-approve bot for a solo org).
+approving reviews). No bot auto-approval satisfies the review requirement; when approving reviews are
+required, they must come from a human or CODEOWNERS reviewer.
 
 | Gate | type | private | public |
 |---|---|:--:|:--:|
