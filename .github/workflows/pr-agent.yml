@@ -37,6 +37,8 @@ jobs:
         uses: The-PR-Agent/pr-agent@f6af7d77554ff8d26adffded077e6461329e92fa # v0.42.0
         env:
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          CONFIG__MODEL: "openai/gpt-oss:120b"
+          OPENAI_API_BASE: "https://api.wave.online/v1/dispatch"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "false"
