@@ -44,7 +44,7 @@ jobs:
       # the rule CI enforces. If this and the amannn action above ever disagree, the rules have drifted —
       # fix the script, not just the YAML. Advisory like the rest of this workflow (continue-on-error).
       - name: Checkout (for the shared validator)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false # we only need the file tree; never reuse GITHUB_TOKEN
       - name: Validate title with the shared script (parity with local hook)
