@@ -1,0 +1,19 @@
+.github/workflows/pr-agent.yml
+  s_42763ace3958cc::t_4534c0e7b0bb62 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "871562c5835947e44cfcbe92afaa6a3df3a948b9",
+  "prompts": {},
+  "sessions": {
+    "s_42763ace3958cc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ff86bab80ffeC0aXPv9W3LJKdP",
+        "model": "mimo-v2.5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
