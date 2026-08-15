@@ -38,7 +38,7 @@ jobs:
         env:
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           CONFIG__MODEL: "openai/claude-sonnet-5"
-          CONFIG__MODEL_WEAK: "openai/qwen2.5:3b"
+          CONFIG__MODEL_WEAK: "openai/qwen3.7-flash"
           CONFIG__MODEL_REASONING: "openai/qwen3-coder:30b"
           OPENAI_API_BASE: "https://api.wave.online/v1/dispatch"
           CONFIG__CUSTOM_MODEL_MAX_TOKENS: "32000"
