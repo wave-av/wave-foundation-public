@@ -64,11 +64,15 @@ const { values } = parseArgs({
   options: {
     in: { type: 'string', short: 'i', default: '/tmp/caps' },
     out: { type: 'string', short: 'o', default: 'frameworks/platform-registry' },
+    // Optional extra baseline for generatedAt reuse, e.g. the standing
+    // registry PR branch's state.json. Defaults to <out>/state.json only.
+    prev: { type: 'string', short: 'p' },
   },
 });
 
 const IN_DIR = values.in ?? '/tmp/caps';
 const OUT_DIR = values.out ?? 'frameworks/platform-registry';
+const PREV_PATH = values.prev;
 
 async function main(): Promise<void> {
   const files = await fs.readdir(IN_DIR);
@@ -92,7 +96,37 @@ async function main(): Promise<void> {
     capabilities,
   };
 
-  await fs.writeFile(join(OUT_DIR, 'state.json'), `${JSON.stringify(state, null, 2)}\n`);
+  // Keep the committed artifact stable: if the only difference from a
+  // previous state.json is the generatedAt stamp, reuse the old stamp so
+  // runs with unchanged content produce no diff (and the aggregate
+  // workflow's change-detect / create-pull-request steps stay quiet).
+  // Baselines, first byte-match wins:
+  //   1. --prev (e.g. the standing registry PR branch's copy), if given
+  //   2. <out>/state.json (the base checkout's copy)
+  const statePath = join(OUT_DIR, 'state.json');
+  const baselines = [...new Set([PREV_PATH, statePath].filter((p): p is string => !!p))];
+  for (const baseline of baselines) {
+    let prevRaw: string;
+    try {
+      prevRaw = await fs.readFile(baseline, 'utf8');
+    } catch {
+      continue; // No baseline at this path — try the next one.
+    }
+    try {
+      const prev = JSON.parse(prevRaw) as Partial<RegistryState>;
+      if (typeof prev.generatedAt === 'string') {
+        const candidate = `${JSON.stringify({ ...state, generatedAt: prev.generatedAt }, null, 2)}\n`;
+        if (candidate === prevRaw) {
+          state.generatedAt = prev.generatedAt;
+          break;
+        }
+      }
+    } catch {
+      // Corrupt baseline — ignore and try the next one.
+    }
+  }
+
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
   await fs.writeFile(join(OUT_DIR, 'STATE.md'), renderMarkdown(state));
   console.log(`wrote state.json + STATE.md (${capabilities.length} repos)`);
 }
@@ -101,7 +135,7 @@ function renderMarkdown(state: RegistryState): string {
   const lines: string[] = [];
   lines.push('# Platform State');
   lines.push('');
-  lines.push(`> Generated ${state.generatedAt} from ${state.repoCount} repos.`);
+  lines.push(`> Content last changed ${state.generatedAt} (${state.repoCount} repos). The aggregator may have swept more recently without finding changes; see the workflow run summary for sweep liveness.`);
   lines.push('>');
   lines.push('> Do NOT hand-edit — modify each repo\'s `capabilities.json` and re-run the aggregator.');
   lines.push('');

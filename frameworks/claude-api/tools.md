@@ -9,7 +9,8 @@ The full tool-use family for the Claude API. Tool access is the highest-leverage
 | Bucket | Tools | Execution | You build |
 |--------|-------|-----------|-----------|
 | User-defined (client) | your `name`/`input_schema` | your app | schema + handler + the loop |
-| Anthropic-schema (client) | `bash`, `text_editor`, `computer`, `memory` | your app | handler + the loop (schema is trained-in) |
+| Anthropic-schema (client) | `bash`, `text_editor`, `memory` | your app | handler + the loop (schema is trained-in) |
+| Client toolsets (multi-tool) | `computer_toolset_20260801`, `browser_toolset_20260801` | your app | host + execute every enabled member; see below |
 | Server | `web_search`, `web_fetch`, `code_execution`, `tool_search` | Anthropic | enable + read final answer |
 
 Anthropic-schema tools call **trained-in** signatures — Claude calls them more reliably than an equivalent custom tool. Prefer them for standard dev ops.
@@ -127,7 +128,7 @@ Anthropic runs an internal loop. Latest version strings (pin them):
 
 `server_tool_use` blocks show what ran (execution already done). **Side-effect note:** web_fetch can pull attacker-controlled content — treat fetched text as untrusted input to any downstream side-effecting tool.
 
-## Anthropic-schema client tools — bash / text-editor / computer / memory
+## Anthropic-schema client tools & toolsets — bash / text-editor / computer / browser / memory
 
 You execute these; sandbox + allowlist them. Latest version strings:
 
@@ -135,10 +136,16 @@ You execute these; sandbox + allowlist them. Latest version strings:
 |------|-------------------|------------------|
 | bash | `bash_20250124` | command allowlist; constrained cwd; per [sandbox-execution rule](../../rules/sandbox-execution.md) |
 | text_editor | `text_editor_20250728` (name `str_replace_based_edit_tool`) | restrict to a working dir |
-| computer | `computer_20251124` (or `_20250124`) | full desktop = broadest blast radius; screenshot-per-action = slow; prefer narrower tools |
+| computer toolset | `computer_toolset_20260801` — GA, no beta header; 17 members (`configs`-disableable) | drives a whole desktop = broadest blast radius; screenshot-per-action = slow; prefer narrower tools |
+| computer (superseded) | `computer_20251124` — still works but needs a beta header; opus-4.7/4.6/4.5, sonnet-4.6 only | migrate to `computer_toolset_20260801`; old shape (`name`/`display_*`/`enable_zoom`, `action` dispatch) is rejected on the new toolset |
+| browser toolset | `browser_toolset_20260801` — GA, no beta header, Claude API only (not Bedrock/Vertex/Foundry/Managed Agents); 31 members, 27 on by default + 4 opt-in disabled (`javascript_exec`, `file_upload`, `read_console`, `read_network`) | drives a browser viewport, not a desktop; `read_page` returns the accessibility tree with stable `[ref_N]`s, `find` does NL element lookup, `form_input` sets values directly, plus tab mgmt + download reporting |
 | memory | `memory_20250818` | client-side; restrict ALL ops to `/memories`; Claude checks it before tasks |
 
-Memory is orthogonal — bolt it onto any toolset for cross-session state. Computer use subsumes most tools but is the slowest and highest-risk; gate it hard.
+Both toolsets support `claude-opus-5`, `claude-sonnet-5`, `claude-fable-5`, `claude-mythos-5`, `claude-opus-4-8`. Dispatch is now the `(toolset_name, name)` pair (not `action`), and every `tool_result` must echo `toolset_name`.
+
+**Pick the right tool — decision order:** prefer an existing narrow API/server tool over either toolset; use **`browser_toolset_20260801`** for anything that's a web page (its a11y-tree `read_page`/`find` beat screenshot-driven computer use); use **computer toolset** only for non-web desktop apps nothing narrower reaches. `web_search`/`web_fetch` are **server** tools — Anthropic runs them and hands back content, no client hosting; the browser/computer toolsets are **client** toolsets — your app hosts and executes every member.
+
+Memory is orthogonal — bolt it onto any toolset for cross-session state. Computer use subsumes most tools but is the slowest and highest-risk; gate it hard. For web content specifically, prefer the browser toolset over computer use.
 
 ## Tool combinations (canonical patterns)
 
@@ -146,7 +153,8 @@ Memory is orthogonal — bolt it onto any toolset for cross-session state. Compu
 - **Coding agent:** `text_editor` + `bash` — inspect, edit, test, repeat (both client; allowlist on untrusted code).
 - **Cite-then-fetch:** `web_search` + `web_fetch` — fetch only relevant URLs.
 - **Long-running:** `memory` + any toolset — persist state across sessions.
-- **All-in-one:** `computer` — arbitrary GUI when nothing narrower fits.
+- **Web automation:** `browser_toolset_20260801` — a11y-tree-driven page interaction; prefer over computer use for anything in a browser.
+- **All-in-one:** `computer_toolset_20260801` — arbitrary desktop GUI when nothing narrower (including the browser toolset) fits.
 
 ## Tool use + prompt caching
 
@@ -197,4 +205,4 @@ Tool errors: return `{"type":"tool_result","tool_use_id":...,"is_error":true,"co
 
 ## Sources
 
-snapshot `agents-and-tools/tool-use/`: overview.md, define-tools.md, how-tool-use-works.md, handle-tool-calls.md, parallel-tool-use.md, fine-grained-tool-streaming.md, strict-tool-use.md, programmatic-tool-calling.md, tool-runner.md, tool-search-tool.md, advisor-tool.md, tool-combinations.md, tool-use-with-prompt-caching.md, bash-tool.md, text-editor-tool.md, computer-use-tool.md, memory-tool.md, web-search-tool.md, web-fetch-tool.md, code-execution-tool.md
+snapshot `agents-and-tools/tool-use/`: overview.md, define-tools.md, how-tool-use-works.md, handle-tool-calls.md, parallel-tool-use.md, fine-grained-tool-streaming.md, strict-tool-use.md, programmatic-tool-calling.md, tool-runner.md, tool-search-tool.md, advisor-tool.md, tool-combinations.md, tool-use-with-prompt-caching.md, bash-tool.md, text-editor-tool.md, computer-use-tool.md, browser-use-tool.md (MISSING from this snapshot — flag for re-vendor), memory-tool.md, web-search-tool.md, web-fetch-tool.md, code-execution-tool.md

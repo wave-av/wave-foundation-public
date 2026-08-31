@@ -1,0 +1,16 @@
+name: good-rule7-has-timeout
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: good-rule7-has-timeout-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
@@ -78,8 +79,17 @@ def audit(host: str, fetched: dict, head: dict, std: dict) -> dict:
 # ── network IO (impure; not unit-tested) ─────────────────────────────────────
 def _fetch(url: str):
     try:
+        # "https-only hosts in practice" was an assertion in a comment, which is
+        # not a control: a file:// or gopher:// URL reaching here would be opened.
+        # Enforce the scheme instead of asserting it.
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+        if scheme not in ("http", "https"):
+            return (0, "", f"<fetch-error: refusing non-http(s) scheme {scheme!r}>")
         req = urllib.request.Request(url, headers={"user-agent": "wave-discoverability-audit/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 — https-only hosts in practice
+        # The rule asks that callers "ensure user data cannot control the URLs".
+        # The scheme allowlist above is that control: file:// and every other
+        # non-http(s) scheme returns before reaching this line.
+        with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 # nosemgrep: dynamic-urllib-use-detected
             return (r.status, r.headers.get("content-type", ""), r.read().decode("utf-8", "replace"))
     except Exception as e:  # noqa: BLE001 — auditor must never crash on one bad surface
         return (0, "", f"<fetch-error: {e}>")

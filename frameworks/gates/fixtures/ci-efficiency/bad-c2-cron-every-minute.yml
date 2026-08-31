@@ -1,0 +1,15 @@
+name: bad-c2-cron-every-minute
+# FAST-CRON, the '*' minutes case: every minute of every hour, the most expensive shape
+# a cron can take.
+on:
+  schedule:
+    - cron: "* * * * *"
+concurrency:
+  group: bad-c2-cron-every-minute
+  cancel-in-progress: false
+jobs:
+  sweep:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - run: echo every-minute

@@ -3,7 +3,7 @@
 // Resend Inbound per-tenant types. Resend's inbound feature parses incoming email and POSTs
 // a JSON payload (signed with Svix) to a configured webhook URL. The wrapper:
 //   1. Provisions an inbound route per tenant whose webhook URL is forced to
-//      https://dispatch.wave.online/v1/inbound/<tenant_id>.
+//      https://email.wave.online/v1/inbound/<tenant_id>.
 //   2. Verifies the Svix signature on inbound webhooks so a forged POST cannot
 //      impersonate a tenant's inbound email.
 

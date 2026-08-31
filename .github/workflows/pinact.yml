@@ -9,6 +9,11 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  merge_group: # required check (pinact) — must run on the merge-queue group
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,19 +23,15 @@ env:
   # sha256 of pinact_linux_amd64.tar.gz from the v4.0.0 release checksums.txt
   PINACT_SHA256: cc220902615325b10bd3bc52ed3de27488f79adaec52adcd12bd2194c2d2c592
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   pinact:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install pinact CLI (pinned + checksum-verified)
@@ -45,3 +46,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }} # resolve SHA<->tag via API without anon rate limits
         run: pinact run --check --verify
+      - name: Enforce chassis SHA pin (pinact-exempt)
+        # .pinact.yaml exempts claude-chassis.yml from pinact entirely because `ignore: true`
+        # is the only per-action granularity pinact offers (its rule schema has no verify-only
+        # suppression, and `--verify` demands a semver tag comment the untagged merge-commit
+        # pin cannot truthfully carry). That exemption also silences pinact's core "must be a
+        # 40-hex SHA" check, so enforce it here instead: every real `uses:` reference to
+        # claude-chassis.yml in the maintained workflows must be @<40-hex-sha>. A branch ref
+        # (or a local `./` ref, which auto-tracks main) is the silent-drift hazard the
+        # caller's header forbids.
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS= read -r line; do
+            case "$line" in
+              *claude-chassis.yml@*) ref="${line##*claude-chassis.yml@}"; ref="${ref%%[[:space:]]*}" ;;
+              *) ref="" ;; # local ./ ref or missing @ref — never allowed for the chassis
+            esac
+            if ! printf '%s' "$ref" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::claude-chassis.yml must be referenced by a 40-hex commit SHA, got: $line"
+              bad=1
+            fi
+          done < <(grep -rnE '^[[:space:]]*(-[[:space:]]+)?uses:.*claude-chassis\.yml' .github/workflows || true)
+          if [ "$bad" -ne 0 ]; then exit 1; fi
+          echo "OK: every claude-chassis.yml reference is pinned to a full commit SHA."

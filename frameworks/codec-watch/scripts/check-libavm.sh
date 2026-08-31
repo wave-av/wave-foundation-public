@@ -17,9 +17,15 @@
 
 set -euo pipefail
 
-FFMPEG_GIT_URL="${FFMPEG_GIT_URL:-https://github.com/FFmpeg/FFmpeg.git}"
-FFMPEG_RAW_URL="${FFMPEG_RAW_URL:-https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/configure}"
-CURL_OPTS=(--silent --show-error --fail --max-time 30 --user-agent "wave-codec-watch/1")
+# Development moved to code.ffmpeg.org (Forgejo) in 2025; github.com/FFmpeg/FFmpeg
+# is now a downstream mirror. Poll the canonical Forgejo git remote for tags,
+# and its raw-file endpoint for the configure script (verified: curl -sI
+# https://code.ffmpeg.org/FFmpeg/FFmpeg/raw/branch/master/configure -> HTTP/2 200).
+FFMPEG_GIT_URL="${FFMPEG_GIT_URL:-https://git.ffmpeg.org/ffmpeg.git}"
+FFMPEG_RAW_URL="${FFMPEG_RAW_URL:-https://code.ffmpeg.org/FFmpeg/FFmpeg/raw/branch/master/configure}"
+# --proto/--proto-redir pin both the initial request and any redirect target to
+# HTTPS, so --location can never be downgraded to plain HTTP.
+CURL_OPTS=(--silent --show-error --fail --location --proto '=https' --proto-redir '=https' --max-time 30 --user-agent "wave-codec-watch/1")
 
 # ── tag check ───────────────────────────────────────────────────────────────
 # `git ls-remote --tags` does a single TCP round-trip; we never clone.

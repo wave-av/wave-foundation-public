@@ -19,8 +19,9 @@
 #   ci_job      job name in the reusable checks.yml / self-check.yml (informational)
 #   spoke_advisory  true → continue-on-error in the inherited spoke gate during rollout
 #
-# Add a gate: append an entry + a one-line script under frameworks/, run `emit.py --write` to
-# regenerate, commit. The CI drift-check keeps everyone honest.
+# Add a gate: append an entry + a one-line script under frameworks/, run `emit.py --precommit` and
+# paste the generated block into .pre-commit-config.yaml, then `emit.py --check` to confirm, commit.
+# (There is no `--write`; this line used to claim there was. The CI drift-check keeps everyone honest.)
 
 gates:
   - id: conventional-title
@@ -55,12 +56,31 @@ gates:
     ci_job: claude-api-cache
     spoke_advisory: true
 
+  # Registered late (#926): this gate existed as FOUR hand-maintained copies across checks.yml,
+  # self-check.yml and dogfood.sh, synced by a comment reading "must mirror self-check.yml". Two of
+  # them had drifted into a fail-open. Being unregistered is precisely how that happened — the
+  # registry + `emit.py --check` is the mechanism that would have caught it on the first divergence.
+  # pass_filenames: false because the script walks the tree itself (it must see files the commit
+  # does not touch — a credential can be introduced by a rename or a merge, not just an edit).
+  - id: secret-scan
+    name: secret scan (credential shapes, allowlist-aware, fail-closed)
+    script: frameworks/gates/scripts/secret-scan.sh
+    vendored: .foundation/frameworks/gates/scripts/secret-scan.sh
+    stage: pre-commit
+    pass_filenames: false
+    always_run: true
+    ci_job: secret-scan
+    spoke_advisory: false
+
   - id: file-size
     name: file-size gate (code <= 800 lines)
     script: frameworks/gates/scripts/check-file-size.sh
     vendored: .foundation/frameworks/gates/scripts/check-file-size.sh
     stage: pre-commit
-    files: '\.(ts|tsx|js|py)$'
+    # SCAN SET (#586 step 3) — the same 20 extensions checks.yml's size gates enforce (.yml/.yaml
+    # joined in #1129). pre-commit filters on this regex BEFORE invoking the hook, so a narrower
+    # list here silently un-gates an extension regardless of what check-file-size.sh scans.
+    files: '\.(ts|tsx|js|jsx|mjs|cjs|py|go|rb|java|kt|swift|c|h|cc|sh|bash|svelte|yml|yaml)$'
     exclude: '\.(types|d)\.ts$'
     pass_filenames: true
     ci_job: file-size

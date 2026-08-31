@@ -7,57 +7,92 @@ on:
   pull_request:
   push:
     branches: [master, main]
-
-permissions:
-  contents: read
+  merge_group: # required-check workflow must run on the merge-queue group, or the queue stalls (AWAITING_CHECKS)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   secret-scan:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      # Runs the CANONICAL gate script — the same file a human runs at commit time, so "passed
+      # locally" and "passed in CI" are one claim, not two that happen to agree. The pattern and the
+      # allowlist pipeline deliberately do NOT appear here: a copy in this file is what drifted into
+      # a fail-open (#926). See frameworks/gates/scripts/secret-scan.sh.
+      # The self-test runs FIRST and in the same job, deliberately. The gate's failure mode is
+      # SILENCE — until #928 a blank line in the allowlist made it report clean against a live
+      # credential — so a green "Secret scan" step is only evidence if the thing that produced it
+      # has been shown to still detect. Ordering it first means a broken gate fails as a broken
+      # gate, rather than passing as a clean repo.
+      - name: Secret-scan self-test (proves the gate still detects)
+        run: bash frameworks/gates/test-secret-scan.sh
       - name: Secret scan (self, allowlist-aware)
-        run: |
-          PATTERNS='(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|-----BEGIN [A-Z ]*PRIVATE KEY)'
-          HITS=$(grep -rIEn "$PATTERNS" --exclude-dir=.git --exclude-dir=node_modules . \
-                 | grep -v 'allowlist secret' \
-                 | { grep -vFf .github/.secret-allowlist || true; } )
-          if [ -n "$HITS" ]; then echo "::error::real-secret-shaped string outside the allowlist"; echo "$HITS"; exit 1; fi
-          echo "secret-scan clean (allowlist-aware)"
+        run: bash frameworks/gates/scripts/secret-scan.sh
   file-size:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: File-size gate (skills/agents docs may legitimately exceed; code must not)
+      - name: File-size gate (first-party code held to 800; vendored harvest exempt by path)
         run: |
+          # LAW (rules/file-size-limits.md): a size gate is an architecture signal — DECOMPOSE, never
+          # trim context to pass it. FIRST-PARTY code (the code we own, outside staging/) is held to a
+          # hard 800 with an 85%-of-cap early warning, so the rethink happens before the wall. Vendored /
+          # harvested material under staging/ is exempt BY PATH (faithful upstream > forced decomposition)
+          # — a path rule, NOT a drift-prone hand-maintained enumeration. .sh is gated too. The
+          # .filesize-allowlist remains only for a rare, auditable FIRST-PARTY exception (keep near-empty).
+          CAP=800
           fail=0
           while IFS= read -r f; do
-            grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # justified harvested exception
+            case "$f" in staging/*) continue ;; esac                            # vendored harvest — exempt by PATH
+            grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # rare, auditable first-party exception
             n=$(wc -l < "$f")
-            if [ "$n" -gt 1000 ]; then echo "::error::$f has $n lines (> 1000)"; fail=1; fi
-          done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' | grep -vE '\.(types|d)\.ts$')
-          if [ "$fail" = 0 ]; then echo "file-size gate passed"; fi
+            if [ "$n" -gt "$CAP" ]; then
+              echo "::error::$f has $n lines (> $CAP) — DECOMPOSE: extract a cohesive module/stage. Do NOT trim comments/context to fit (rules/file-size-limits.md is LAW)."; fail=1
+            elif [ "$n" -ge $((CAP * 85 / 100)) ]; then
+              echo "::warning::$f has $n lines (>= 85% of the $CAP cap) — plan a module extraction NOW, before the wall. Never trim context to buy room (rules/file-size-limits.md)."
+            fi
+          done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' '*.sh' | grep -vE '\.(types|d)\.ts$')
+          if [ "$fail" = 0 ]; then echo "file-size gate passed (first-party cap $CAP; staging/ vendored exempt by path)"; fi
           exit "$fail"
+  context-integrity:
+    # LAW (rules/file-size-limits.md): a gate is an architecture signal — DECOMPOSE, never trim context
+    # to pass it. Flags context REMOVED from a near-cap file with no module extracted. Fail-open on infra.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Context integrity (decompose, never trim context to pass a gate)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        # Graceful no-op on the public mirror, where this script isn't in the open-core allowlist.
+        run: |
+          [ -f scripts/check-context-integrity.sh ] || { echo "::notice::context-integrity script absent (public mirror) — skipping"; exit 0; }
+          bash scripts/check-context-integrity.sh "origin/${BASE_REF:-main}"
   skill-validate:
     # The gate that would have caught the 2026-05-26 regression: validates every SKILL.md's
     # frontmatter (valid YAML, no dup keys, name==dir, non-empty description + allowed-tools).
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - run: pip install pyyaml
@@ -66,10 +101,10 @@ jobs:
   version-sync:
     # plugin.json version == marketplace.json version == latest git tag (catches manifest drift —
     # e.g. a release tagged while the manifests were left behind). Maintained by scripts/release.sh.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0 # need tags for the version<->tag comparison
           persist-credentials: false
@@ -82,10 +117,10 @@ jobs:
     # Dogfood the Claude-API request-shape linter against this repo (the chassis under
     # frameworks/model-routing/local_offload talks to the API). Blocking here — foundation enforces
     # the rule it ships. Spokes get the advisory form via the reusable checks.yml.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Claude-API request-shape gate (canonical script)
@@ -94,32 +129,50 @@ jobs:
     # Make frameworks/gates/registry.yaml the provable source of truth: fail if the live
     # .pre-commit-config.yaml local hooks don't match what the registry declares. Add a gate in the
     # registry, regenerate, commit — or this fails.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - run: pip install pyyaml
       - name: Gate registry ↔ pre-commit parity
         run: python3 frameworks/gates/emit.py --check .pre-commit-config.yaml
-  product-registry-drift:
-    # Single-source the WAVE product registry: products.manifest.json is canonical; the chassis
-    # WAVE_PRODUCTS array (which renders the human product-nav AND the agent wave-products.json) must
-    # match it — every built product present, accent hex derived from the manifest OKLCH (never hand-
-    # typed twice). Add/repaint a product in the manifest, regenerate nav.ts — or this fails. (#69)
-    runs-on: ubuntu-latest
+  status-context-conformance:
+    # Can any two workflows disagree about the same required check? Branch protection matches a
+    # required context BY NAME, and nothing in GitHub warns when two workflows publish the same one
+    # — or when a workflow's merge_group trigger is broader than its pull_request trigger, so the
+    # queue runs a job the PR never did. That combination dequeued #1010 at 12/12 green with no red
+    # mark anywhere (#1014). Pre-existing findings are grandfathered in .status-context-baseline.txt;
+    # this fails on NEW ones, and on a baseline entry that has silently stopped reproducing.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Status-context conformance (no NEW collision or trigger asymmetry)
+        # Graceful no-op on the public mirror, where this script isn't in the open-core allowlist.
+        run: |
+          [ -f scripts/status-context-conformance.mjs ] || { echo "::notice::status-context-conformance script absent (public mirror) — skipping"; exit 0; }
+          node scripts/status-context-conformance.mjs
+  product-registry-drift:
+    # Single-source the WAVE product registry: products.manifest.json is canonical; the chassis
+    # WAVE_PRODUCTS array (which renders the human product-nav AND the agent wave-products.json) must
+    # match it — every built product present, accent hex derived from the manifest OKLCH (never hand-
+    # typed twice). Add/repaint a product in the manifest, regenerate nav.ts — or this fails. (#69)
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          node-version: "22"
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
       - name: Manifest ↔ chassis WAVE_PRODUCTS parity
         run: |
           [ -f staging/golden-paths-scaffolds/new-subdomain-app/validators/check-registry.mjs ] || { echo "::notice::registry validator absent (public mirror) — skipping"; exit 0; }
@@ -129,18 +182,195 @@ jobs:
     # fleet. BLOCKING here (foundation enforces its own rules) — first via --self-test (the fixtures
     # that pin metered/auth-without-enforcement detection + the gateway-fronted escape), then against
     # this repo's own capabilities.json (clean: no metered/auth API claims).
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Install tsx
         run: npm install --no-save --no-audit --no-fund tsx@4
       - name: Honesty check self-test (fixtures)
         run: npx tsx frameworks/platform-registry/scripts/check-honesty.ts --self-test
       - name: Honesty check on own capabilities.json
         run: npx tsx frameworks/platform-registry/scripts/check-honesty.ts capabilities.json --root .
+  gate-self-tests:
+    # #936: the gate self-tests under frameworks/gates/ were reachable ONLY from
+    # scripts/advance-major-tag.sh, promote-rule.sh and demote-rule.sh — so an ordinary PR that broke
+    # the inlined WAS lint in checks.yml, or the review-gate script, shipped GREEN and the breakage
+    # surfaced at the next rule promotion, attributed to whoever happened to trigger it. Those hooks
+    # are right for their purpose (a brake before force-moving a fleet-wide tag); they are not
+    # coverage. This job is the coverage: every self-test, on every PR, against the PR's own head.
+    #
+    # DISCOVERED, never enumerated. A hardcoded list of three would be the same silent-staleness bug
+    # this job exists to close — a self-test added tomorrow would sit unrun and read as covered. So
+    # the suite is `git ls-files 'frameworks/gates/test-*.sh'`: tracked files only (an untracked drop
+    # into the runner cannot inject a script), and an EMPTY result is a hard error, never a green
+    # "0 passed" — that fail-open shape is exactly what disabled this repo's secret scan (#928).
+    #
+    # Measured cost, this machine, clean tree: 10s total for the three. test-human-review-gate.sh and
+    # test-confidence-calibration-gate.sh each re-run test-workflow-policy.sh internally as a brake,
+    # so it executes 3x (~4s of that 10s). Accepted, not optimized away: the inner brake guards rule
+    # promotion — a more dangerous moment than this one — and weakening a real safeguard to buy back
+    # four seconds of CI is a bad trade.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      # test-workflow-policy.sh pip-installs pyyaml itself when it's missing. Install it up front so a
+      # PyPI hiccup fails as its own loud step instead of surfacing as a confusing gate failure.
+      - run: pip install pyyaml
+      - name: Run every frameworks/gates/test-*.sh
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(git ls-files 'frameworks/gates/test-*.sh' | sort)
+          if [ "${#TESTS[@]}" -eq 0 ]; then
+            echo "::error::no tracked frameworks/gates/test-*.sh found — the discovery glob is broken or the suite was deleted. Refusing to report green on zero tests."
+            exit 1
+          fi
+          echo "discovered ${#TESTS[@]} gate self-test(s):"
+          printf '  %s\n' "${TESTS[@]}"
+          fail=0
+          for t in "${TESTS[@]}"; do
+            echo "::group::$t"
+            if bash "$t"; then
+              echo "PASS  $t"
+            else
+              echo "::error::$t FAILED — the gate it covers is broken as of this commit, not at the next rule promotion."
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          [ "$fail" = 0 ] && echo "gate self-tests passed (${#TESTS[@]}/${#TESTS[@]})"
+          exit "$fail"
+
+  node-suites:
+    # #947: the sibling job above covers frameworks/gates/test-*.sh. NOTHING covered the Node drills.
+    # Measured on main before this job existed: 10 tracked *.test.mjs outside packages/, 95 tests,
+    # and the only `node --test` invocation in any workflow was verify-loop.yml running its own.
+    # Everything else — including scripts/token-budget-check-changed.test.mjs, which checks.yml:97
+    # cites as the reason its inlined copy can be trusted, and which 126 consumer repos execute —
+    # was local-only. A suite nobody runs is indistinguishable from no suite and reads as coverage.
+    #
+    # This is not hypothetical. #956 shipped a negative control asserting `origin/main` did not yet
+    # contain its own hardening; the assertion inverted the moment the lane merged and main went
+    # permanently red (8/9). Nothing noticed, because nothing ran it — it was found by hand, after
+    # the fact. That is the cost this job removes.
+    #
+    # DISCOVERED BY SUFFIX, not by directory. #947 proposed `scripts/*.test.mjs`, which was already
+    # stale when it was written: #953 ships frameworks/frameworks-gates.test.mjs, matched by neither
+    # that glob nor the gate-self-tests glob above. A path-prefixed pattern is a hardcoded list with
+    # better ergonomics, and it goes stale the same way. Suffix + one narrow exclusion instead.
+    #
+    # packages/ is excluded because those 26 suites already run under their own `npm test` in the
+    # per-package release workflows; including them here would double-run them. Deliberately the
+    # NARROW exclusion — anything else naming itself *.test.mjs gets run wherever it lives.
+    #
+    # Measured cost, this machine: ~16s for all 10 suites (ratchet-siblings 18s dominates when run
+    # alone; concurrently the wall is lower). Well inside a normal job.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          # NOT shallow: scripts/network-listers.test.mjs reads `origin/main:<path>` via `git show`
+          # for its negative control, and a depth-1 clone has no origin/main to read.
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - name: Run every tracked *.test.mjs outside packages/
+        run: |
+          set -euo pipefail
+          # `mapfile < <(git ls-files …)` cannot propagate the lister's exit status — the #944 defect
+          # class. It is safe HERE, and only here, because a failed lister yields an empty array and
+          # the zero-length check below turns that into a hard failure rather than a green run.
+          mapfile -t SUITES < <(git ls-files '*.test.mjs' | grep -v '^packages/' | sort)
+          if [ "${#SUITES[@]}" -eq 0 ]; then
+            echo "::error::no tracked *.test.mjs found outside packages/ — the discovery glob is broken, the lister failed, or the suites were deleted. Refusing to report green on zero tests."
+            exit 1
+          fi
+          echo "discovered ${#SUITES[@]} suite(s):"
+          printf '  %s\n' "${SUITES[@]}"
+          # PER-SUITE, not one aggregate run (#964). The zero-length check above closes "nobody runs
+          # the suites"; it cannot see a suite that IS run and registers no tests — an accidental
+          # early return, a top-level guard that skips registration, a refactor that leaves the file
+          # importable and empty. `node --test` collects nothing from it, the other suites pass, and
+          # the job is green. The file then reads on the repo as coverage while providing none.
+          # Two zeros that must not look alike: "asserts nothing" and "passed".
+          #
+          # A suite that FAILS and a suite that is EMPTY are also different findings, so they are
+          # reported separately and never collapsed into one bucket.
+          failed=()
+          empty=()
+          total=0
+          for s in "${SUITES[@]}"; do
+            # rc straight off the command substitution — a pipeline here would report the wrong
+            # status, and `set -e` must not abort the loop before the summary is printed.
+            # rc straight off the command substitution — a pipeline here would report the wrong
+            # status, and `set -e` must not abort the loop before the summary is printed.
+            out="$(node --test --test-reporter=tap --test-timeout=180000 "$s" 2>&1)" && rc=0 || rc=$?
+            # `# tests N` CANNOT distinguish these: when a file registers nothing, node reports the
+            # FILE ITSELF as the single test, so a hollow suite still prints `# tests 1`. The real
+            # discriminator is the subtest NAME — a hollow file's only subtest is named exactly the
+            # path we passed, whereas a real suite's subtests carry test names:
+            #   hollow  ->  # Subtest: hollow.test.mjs      (the argv path)
+            #   real    ->  # Subtest: a                    (the test's name)
+            # Node names that file-level subtest DIFFERENTLY depending on its version — node 20 uses
+            # the resolved absolute path, node 22/24 the relative one (measured in Docker across all
+            # three). This used to string-match an enumeration of the spellings it knew, which is a
+            # fail-open waiting to happen: the drill validating this step runs under a DIFFERENT node
+            # than the step does (gate-self-tests has no setup-node; this job pins 24), so a runner
+            # image bump or a third spelling would silence the check while the drill stayed green.
+            # tap-count-real-tests.mjs stops enumerating and canonicalises both sides instead, so any
+            # spelling of the same file compares equal — including ones that don't exist yet (#1047).
+            #
+            # Fail LOUD if the helper is missing or errors: an empty `real` must never be read as
+            # "0 real tests", which would report every suite as hollow, or worse be papered over.
+            if ! real="$(printf '%s\n' "$out" | node scripts/tap-count-real-tests.mjs "$s")"; then
+              echo "::error::scripts/tap-count-real-tests.mjs failed for $s — refusing to score this suite"
+              exit 1
+            fi
+            total=$((total + real))
+            if [ "$rc" -ne 0 ]; then
+              failed+=("$s")
+              printf '  FAIL  %-58s (%s test(s), exit %s)\n' "$s" "$real" "$rc"
+              printf '%s\n' "$out" | tail -25 | sed 's/^/        | /'
+            elif [ "$real" -eq 0 ]; then
+              # A suite can legitimately register nothing and still assert: a self-contained harness
+              # whose EXIT CODE is the assertion (scripts/gate-scope-conformance.test.mjs runs mutant
+              # scans this way). Those are real coverage — `node --test` surfaces a non-zero exit as a
+              # failing file-level subtest — but they are indistinguishable from a hollow file, since
+              # both register 0 tests and both exit 0 when healthy. So the exception must be
+              # DECLARED, not inferred: silence stays a failure, and the opt-out is one reviewable
+              # line in the file itself.
+              if grep -qF 'node-suites: exit-code-harness' "$s"; then
+                printf '  ok    %-58s exit-code harness (declared)\n' "$s"
+              else
+                empty+=("$s")
+                printf '  EMPTY %-58s registered 0 tests\n' "$s"
+              fi
+            else
+              printf '  ok    %-58s %s test(s)\n' "$s" "$real"
+            fi
+          done
+          echo "total registered tests: $total across ${#SUITES[@]} suite(s)"
+          # Guard the count BEFORE expanding — `"${arr[@]}"` on an empty array is an unbound-variable
+          # error under `set -u` on bash 3.2, which is what the drill runs on.
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::${#failed[@]} suite(s) FAILED: ${failed[*]}"
+            exit 1
+          fi
+          if [ "${#empty[@]}" -gt 0 ]; then
+            echo "::error::${#empty[@]} suite(s) registered ZERO tests — a discovered suite that asserts nothing reads as coverage and provides none. Delete the file or give it real assertions: ${empty[*]}"
+            exit 1
+          fi

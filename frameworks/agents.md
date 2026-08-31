@@ -18,7 +18,7 @@
 | DevOps           | 15    | `deployment-devops-specialist`, `ci-cd-resolution-specialist`, `vercel-deployment-specialist`                 |
 | Testing          | 5     | `testing-qa-specialist`, `test-coverage-review-specialist`, `autonoma-testing-specialist`                     |
 | Frontend         | 8     | `frontend-ux-specialist`, `design-system-specialist`, `accessibility-compliance-specialist`                   |
-| Observability    | 10    | `monitoring-observability-specialist`, `sentry-specialist`, `dash0-specialist`                                |
+| Observability    | 10    | `monitoring-observability-specialist`, `sentry-specialist`, `otlp-specialist`                                |
 | Communication    | 6     | `slack-automation-specialist`, `email-delivery-automation-specialist`, `notification-dispatcher`              |
 
 ### By Tool Access Needs (MCP Servers)
@@ -31,7 +31,7 @@
 | github     | 8 agents  | PRs, workflows, code review               |
 | linear     | 4 agents  | Issue tracking, TaskCreate/TodoWrite sync |
 | cloudflare | 6 agents  | Streaming, CDN, Workers                   |
-| dash0      | 4 agents  | Metrics, OTEL, observability              |
+| otlp       | 4 agents  | Metrics, OTEL, observability              |
 
 ---
 
@@ -175,9 +175,9 @@ stripe-payments-specialist
 | Agent Database | `supabase` | `execute_sql` (agent state, spawn history)       |
 | Agent Errors   | `sentry`   | `search_issues` (agent failures)                 |
 | Task Sync      | `linear`   | `create_issue` (TaskCreate + TodoWrite → Linear) |
-| Metrics        | `dash0`    | `PromQL` (agent performance)                     |
+| Metrics        | `otlp`     | `PromQL` (agent performance)                     |
 
-**Quick enable:** `bash .claude/scripts/mcp-agent-spawn.sh --servers supabase,sentry,linear,dash0 --task "..."`
+**Quick enable:** `bash .claude/scripts/mcp-agent-spawn.sh --servers supabase,sentry,linear,otlp --task "..."`
 
 ---
 
@@ -191,4 +191,4 @@ stripe-payments-specialist
 
 ---
 
-_v1.1.0 | Updated: 2026-01-29 | Owner: @platform-team | Stale after: 30 days_
+_v1.1.1 | Updated: 2026-08-12 | Owner: @platform-team | Stale after: 30 days_

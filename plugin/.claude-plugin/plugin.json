@@ -1,7 +1,7 @@
 {
   "name": "wave-foundation",
-  "description": "WAVE cross-project foundation: 5 plan skills (plan-generate/enhance/to-action/audit, wave-execute) + 13 hooks — 9 guards (supabase-prod-guard, file-size-warning, circuit-breaker, post-write-validator, session-start, skill-frontmatter-guard, git-safety-guard, git-commit-anchor, doppler-env-guard) + 3 CCCR context-cost hooks (task-export, task-carryover-restore, context-budget-warn) + Doppler secrets-name cache (doppler-secrets-cache).",
-  "version": "1.8.5",
+  "description": "WAVE cross-project foundation: 5 plan skills (plan-generate/enhance/to-action/audit, wave-execute) + 15 hooks — 9 guards (supabase-prod-guard, file-size-warning, circuit-breaker, post-write-validator, session-start, skill-frontmatter-guard, git-safety-guard, git-commit-anchor, doppler-env-guard) + 3 CCCR context-cost hooks (task-export, task-carryover-restore, context-budget-warn) + Doppler secrets-name cache (doppler-secrets-cache) + intent-ledger cross-compaction action-item capture (intent-ledger-capture on PreCompact, intent-ledger-surface on SessionStart) + 2 code-intelligence agents (codebase-analyzer, type-fixer) built on the Serena L2 symbol-navigation layer (requires the project-root .mcp.json + .serena/project.yml — see docs/serena-l2-activation.md).",
+  "version": "1.18.0",
   "author": {
     "name": "Jake Fineman",
     "email": "jake@wave.online"
@@ -18,6 +18,8 @@
     "guard",
     "foundation",
     "cost",
-    "compaction"
+    "compaction",
+    "serena",
+    "symbol-navigation"
   ]
 }

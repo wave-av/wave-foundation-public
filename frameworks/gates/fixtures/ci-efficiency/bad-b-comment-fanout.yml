@@ -1,0 +1,12 @@
+name: bad-b-comment-fanout
+# COMMENT-FANOUT: an issue_comment trigger with no author filter and no command-prefix
+# match anywhere in the file. Any comment on any issue or PR fires a paid run.
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  act:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - run: echo unguarded
