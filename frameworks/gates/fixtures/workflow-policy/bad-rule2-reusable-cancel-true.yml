@@ -1,0 +1,11 @@
+name: bad-rule2-reusable-cancel-true
+on:
+  workflow_call:
+concurrency:
+  group: bad-rule2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

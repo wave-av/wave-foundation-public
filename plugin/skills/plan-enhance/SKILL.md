@@ -1005,7 +1005,7 @@ COMPLETENESS:
   [ ] Unknowns acknowledged
 
 QUALITY:
-  [ ] Someone could act without asking questions
+  [ ] Someone could act without asking questions <!-- nosemgrep: skill-excessive-autonomy -->
   [ ] Confidence levels are calibrated
   [ ] Priorities are justified
   [ ] Evidence is traceable

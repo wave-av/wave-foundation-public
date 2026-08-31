@@ -1,0 +1,9 @@
+name: bad-rule3-push-mg-no-exclude
+on:
+  push: {}
+  merge_group:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

@@ -19,15 +19,24 @@ reviews:
       - "[DRAFT]"
       - "[SKIP CI]"
     drafts: false
+    # #55 credit-burn fix: stop re-review-on-every-push (the confirmed fleet-wide
+    # burn driver, amplified by many ephemeral agent-worktree PRs). One full review
+    # per PR is kept; pushing more commits does not re-trigger it automatically.
+    # `@coderabbitai review` still works on demand for real PRs that need a re-look.
+    auto_incremental_review: false
+    auto_pause_after_reviewed_commits: 1
+    # Opt-out for throwaway/ephemeral PRs only: apply the `skip-review` label to skip
+    # (negative match; PRs without it are unaffected — real PRs keep full coverage).
+    labels:
+      - "!skip-review"
 
   # ── auto_approve was REMOVED (inert) ──────────────────────────────────────
   # `auto_approve` is not a key in CodeRabbit's live v2 schema
-  # (storage.googleapis.com/coderabbit_public_assets/schema.v2.json, re-verified 2026-08-06),
-  # so the block that used to sit here never did anything. The comment it carried was worse
-  # than the block: it claimed the auto-approval "satisfies branch protection's required
-  # review", which was never true — nothing in this file has ever posted a review. Removing
-  # it changes no behaviour. CodeRabbit's unearned approvals are vendor-side and no key here
-  # disables them; use branch protection requiring a human/CODEOWNERS review instead. (#1083)
+  # (storage.googleapis.com/coderabbit_public_assets/schema.v2.json, verified 2026-08-02),
+  # so the block that used to sit here never did anything. It did NOT satisfy branch
+  # protection, and removing it changes no behaviour. CodeRabbit's unearned approvals are
+  # vendor-side and no key in this file disables them — handle that with branch protection
+  # requiring a human/CODEOWNERS review, not with config here.
 
   review_status: true
   request_changes_workflow: false
@@ -95,9 +104,9 @@ reviews:
       enabled: true
       packages:
         - "ast-grep-essentials"
-    # Same silent-drop class as `osvScanner` above: the schema key is `github-checks`,
-    # kebab-case. `github_checks` was accepted silently and gated nothing. Verified against
-    # the same live v2 schema fetch (2026-08-06).
+    # Same misspelling class as `osvScanner` above: the schema key is `github-checks`,
+    # hyphenated, not `github_checks`. Verified against the same live v2 schema dump
+    # (2026-08-06); the snake_case key was silently ignored, so this block was inert.
     github-checks:
       enabled: true
       timeout_ms: 900000

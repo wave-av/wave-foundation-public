@@ -1,0 +1,17 @@
+name: bad-rule5-blacksmith-macos-malformed
+# rule5 negative case for the Blacksmith macOS widening: `runs-on` is UNTRUSTED caller YAML
+# (checks.yml lints the CALLING repo's workflows), so the macOS allowlist must stay an ANCHORED
+# enumeration of vCPU count and OS version. A label that merely starts with a legal macOS shape —
+# junk suffix, unoffered vCPU count, unoffered OS version — must still be rejected. If this
+# fixture ever passes, the macOS widening has rotted into a prefix match.
+on:
+  pull_request:
+concurrency:
+  group: bad-rule5-blacksmith-macos-malformed-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: blacksmith-6vcpu-macos-latest-evil
+    timeout-minutes: 5
+    steps:
+      - run: echo ok

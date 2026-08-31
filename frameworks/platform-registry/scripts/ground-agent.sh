@@ -56,7 +56,7 @@ total = len(caps)
 
 print(f"# WAVE platform state (loaded for agent grounding)")
 print()
-print(f"_Source:_ \`wave-foundation/frameworks/platform-registry/state.json\` @ {gen_at}")
+print(f"_Source:_ \`wave-foundation/frameworks/platform-registry/state.json\` (content last changed {gen_at})")
 print(f"_Repos:_ {total}")
 print()
 print("## Grounding rules (Rule 1: read this before claiming any WAVE capability exists)")

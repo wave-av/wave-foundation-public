@@ -1,0 +1,41 @@
+name: good-rule5-depot-runner
+# rule5 positive case: a Depot runner label is policy-legal (GitHub-App registration, zero GitHub
+# Actions minutes, pip-capable, cap-surviving — the same three properties that admitted Blacksmith).
+# Pairs with bad-rule5-depot-macos-malformed.yml, which proves the widening is an anchored enumeration
+# and not a "starts with depot-" free-for-all. depot-macos-26 is the Apple M4 label; depot-macos-latest
+# aliases macOS 15 (M2); depot-macos-14 is macOS 14 (M2).
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: good-rule5-depot-runner-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: depot-ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-pinned:
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-macos-m4:
+    runs-on: depot-macos-26
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-macos-15:
+    runs-on: depot-macos-15
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-macos-14:
+    runs-on: depot-macos-14
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
