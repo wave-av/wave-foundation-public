@@ -25,7 +25,7 @@ node "$LEDGER_BIN" --surface 2>/dev/null || true
 
 if [ "${INTENT_LEDGER_BLOCK:-0}" = "1" ]; then
   if ! node "$LEDGER_BIN" --block >/dev/null 2>&1; then
-    echo "⛔ intent-ledger: unreconciled action items remain — TaskCreate or dismiss them before compacting." >&2
+    echo "⛔ intent-ledger: unreconciled action items remain — promote to an issue or --reconcile them before compacting." >&2
     exit 2 # block signal (honored where the harness supports PreCompact veto)
   fi
 fi
