@@ -262,7 +262,7 @@ function surface() {
   if (!open.length) { console.log('🧾 intent-ledger: no open action items.'); return 0; }
   console.log(`🧾 INTENT LEDGER — ${open.length} open action item(s) carried across compaction:`);
   for (const e of open) console.log(`  • [${e.id}] (${e.kind}) ${e.text}`);
-  console.log('  Reconcile each: TaskCreate it, or `intent-ledger.mjs --reconcile <id> --status dismissed`.');
+  console.log('  Reconcile each: promote it to an issue, or `intent-ledger.mjs --reconcile <id> --status dismissed`.');
   return 0;
 }
 
