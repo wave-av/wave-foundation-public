@@ -1,0 +1,127 @@
+name: io-triage
+
+# Stage A (triage) as a REUSABLE workflow (workflow_call). Behavior-identical to
+# the original single-repo issue-triage; the caller owns the `on: issues` trigger,
+# concurrency, and the IO_ENABLED kill switch. This holds the steps + a
+# parameterized fetch of the pipeline scripts so any enrolled repo can consume it.
+#
+# Cross-repo fetch is parameterized (scripts_repo/scripts_ref/gh_pat) so the
+# distribution mechanism stays open: wave-foundation dogfoods this tokenlessly
+# against itself; a consumer later points scripts_repo at the source (public
+# open-core repo OR private + an App/PAT token via gh_pat) with no rework here.
+
+on:
+  workflow_call:
+    inputs:
+      owner:
+        description: "Repo owner login for trust-tiering (maps to IO_OWNER). Empty => script default."
+        type: string
+        required: false
+        default: ""
+      trusted_assoc:
+        description: "Space-separated author_associations that map to the member tier."
+        type: string
+        required: false
+        default: "OWNER MEMBER COLLABORATOR"
+      scripts_repo:
+        description: "owner/name of the repo holding scripts/issue-ops (source of truth)."
+        type: string
+        required: false
+        default: "wave-av/wave-foundation"
+      scripts_ref:
+        description: "Ref/SHA of scripts_repo to load the pipeline scripts from."
+        type: string
+        required: false
+        # COUPLED to scripts_repo's default above: a default branch name is a property of the
+        # repo being checked out, not a universal constant. This said "master" while
+        # scripts_repo defaulted to wave-av/wave-foundation, whose default branch is `main` —
+        # so every caller that did not pass scripts_ref checked out a ref that does not exist
+        # and the job died at `actions/checkout` with a bare `git failed with exit code 1`.
+        # A caller that overrides scripts_repo MUST set scripts_ref too; the pair only has a
+        # sensible default together.
+        default: "main"
+    secrets:
+      gh_pat:
+        description: "Optional PAT/App token: cascade-labeling identity + private scripts fetch. Falls back to GITHUB_TOKEN."
+        required: false
+      bot_app_id:
+        description: "GitHub App ID for the issue-ops bot. Opt-in identity; active only when the IO_USE_APP repo var == 'true'. Optional."
+        required: false
+      bot_private_key:
+        description: "GitHub App private key (PEM) for the issue-ops bot. Optional."
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          # GitHub-hosted, trusted first-party code only — so we can enforce egress
+          # (unlike the self-hosted B/C stages where harden-runner can only audit on macOS).
+          # Allowlist is exactly what this job touches: App-token mint + gh API (api.github.com),
+          # git checkout (github.com, codeload + githubusercontent asset hosts). Proven by the
+          # _egress-probe harness on the PR branch before this landed.
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+      - name: scope repos for the App token (bare names, deduped, comma-separated)
+        id: scope
+        env:
+          CONSUMER: ${{ github.event.repository.name }}
+          SCRIPTS_REPO: ${{ inputs.scripts_repo }}
+        run: |
+          src="${SCRIPTS_REPO##*/}"
+          if [ "$src" = "$CONSUMER" ]; then repos="$CONSUMER"; else repos="$CONSUMER,$src"; fi
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+      - name: mint issue-ops App token (opt-in; dormant unless the IO_USE_APP repo var == 'true')
+        id: apptoken
+        if: ${{ vars.IO_USE_APP == 'true' }}
+        # When IO_USE_APP is unset this step is SKIPPED, so steps.apptoken.outputs.token
+        # is the empty string and every token expression below falls back to
+        # gh_pat || github.token — byte-for-byte today's behavior until the operator opts in.
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.bot_app_id }}
+          private-key: ${{ secrets.bot_private_key }}
+          # Span-scope to {consumer, source} (BARE names) so the scripts checkout can read
+          # the PRIVATE source cross-repo (App installed on both). Dogfood => single repo.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.scope.outputs.repos }}
+      - name: check out the pipeline scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ inputs.scripts_repo }}
+          ref: ${{ inputs.scripts_ref }}
+          token: ${{ steps.apptoken.outputs.token || secrets.gh_pat || github.token }}
+          sparse-checkout: scripts/issue-ops
+          persist-credentials: false
+      # Label via the PAT/App token (not GITHUB_TOKEN) so the category:* label event
+      # is attributed to a non-Actions identity and cascades into Stage B assess.
+      - name: triage
+        env:
+          GH_TOKEN: ${{ steps.apptoken.outputs.token || secrets.gh_pat || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          ASSOC: ${{ github.event.issue.author_association }}
+          BODY: ${{ github.event.issue.body }}
+          REPO: ${{ github.repository }}
+          IO_OWNER: ${{ inputs.owner }}
+          IO_TRUSTED_ASSOC: ${{ inputs.trusted_assoc }}
+        run: bash scripts/issue-ops/triage.sh
+      - name: revoke stale agent approval if the issue was edited
+        if: github.event.action == 'edited'
+        env:
+          GH_TOKEN: ${{ steps.apptoken.outputs.token || secrets.gh_pat || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/issue-ops/revoke-on-edit.sh

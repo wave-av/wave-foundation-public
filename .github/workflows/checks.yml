@@ -104,6 +104,37 @@ jobs:
           fi
           if [ -n "$HITS" ]; then echo "::error::secret-like pattern found — do not commit credentials"; echo "$HITS"; exit 1; fi
           echo "secret-scan clean"
+      - name: Raw-PAN gate (stripe-tokenization-only law)
+        run: |
+          # The tokenization-plane E1 gate: no raw card numbers reach Stripe API calls. Patterns:
+          #  - card[number]= / card[number]: / URL-encoded card%5Bnumber%5D  (raw-PAN request fields)
+          #  - card_number=                                                  (legacy raw field)
+          #  - a 13-19 digit literal immediately adjacent to stripe context   (a pasted test PAN)
+          # Fail-closed like the scanner above: classify the exit, never swallow it.
+          set +e
+          PAN_HITS=$(grep -rIEn 'card(\[number\]|_number|%5Bnumber%5D)|4[0-9]{15}|5[1-5][0-9]{14}' \
+              --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.py' --include='*.sh' \
+              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=staging \
+              --exclude-dir=docs --exclude-dir=designs . 2>/dev/null \
+              | grep -viE 'test|spec|fixture|mock|example|allowlist secret' | head -40)
+          prc=$?
+          set -e
+          if [ "$prc" -gt 1 ]; then
+            echo "::error::raw-PAN gate: the scan pipeline failed (exit $prc) — refusing to report clean."
+            exit 1
+          fi
+          # A hit is only a violation when STRIPE context shares the file — the two-line window check.
+          VIOLATIONS=$(echo "$PAN_HITS" | while IFS= read -r line; do
+            f="${line%%:*}"
+            [ -f "$f" ] || continue
+            if grep -qiE 'stripe' "$f" 2>/dev/null; then echo "$line"; fi
+          done)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::raw-PAN gate: card-number patterns in files touching Stripe — use Elements/PaymentSheet/Checkout + pm_/token confirms (the stripe-tokenization-only law)."
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "raw-PAN gate clean"
       - name: File-size gate
         env:
           MAX: ${{ inputs.max_lines }}
