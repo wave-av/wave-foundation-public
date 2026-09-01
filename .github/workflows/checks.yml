@@ -479,6 +479,114 @@ jobs:
           done < <(grep -vE '\.(types|d)\.ts$' "$list" || true)
           if [ "$fail" = 0 ]; then echo "token-budget ratchet passed (diff-scoped: $count over-cap file(s) in the changed set, 0 new/grown, $exempt over-cap file(s) exempted by $ALLOWLIST)"; fi
           exit "$fail"
+      - name: Prose-energy-budget gate (ratchet, diff-scoped)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # scan-family: prose
+          # (a DIFFERENT law from the file-size one above — declared via the marker above so the
+          # gate-scope drill groups it separately; an undeclared divergent scan set stays a failure).
+          # The governance-energy-budget law (born de-board-org-psy lane 2026-08-31, canon
+          # claude-workstation governance/research/thinker-canon/de-board-organizational-psychoanalysis.md,
+          # De Board ch.10): governance prose spends the psychic energy budget it exists to free —
+          # judge organizational design by how much energy it leaves for the task. This gate governs
+          # the STANDING READ: every session pays for AGENTS.md and SKILL.md bytes. Diff-scoped like
+          # the token-budget twin above (same base derivation, same #958 self-exemption rule, same
+          # enumerate-first law), scanning ONLY AGENTS.md / SKILL.md basenames.
+          #
+          # The one NEW mechanism: an `Energy-Budget: retires <path-or-law>` COMMIT TRAILER in the
+          # diff's own commits budgets a growth — net-new law must name an older law to retire or
+          # merge. The gate NAMES the trailer and demands the diff actually show the retirement; it
+          # cannot prove the retirement happened, so a budgeted growth is a named warning, never a
+          # silent pass. scripts/prose-byte-budget-gate.sh is the local/tested reference
+          # (scripts/prose-byte-budget-gate.test.mjs drills it); keep this inlined copy behaviorally
+          # in sync with it (same comment-enforced norm as the token-budget pair).
+          PROSE_MAX=21600
+          BASELINE=".github/.prose-byte-baseline"
+          BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
+          head2="$(git rev-parse -q --verify 'HEAD^2' 2>/dev/null || true)"
+          if [ -n "$PR_HEAD_SHA" ] && [ -n "$head2" ] && [ "$head2" = "$PR_HEAD_SHA" ]; then
+            BASE_REF="$(git rev-parse 'HEAD^1')"
+          fi
+          EMPTY_TREE=$(git hash-object -t tree /dev/null)
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$EMPTY_TREE"
+            echo "::warning::prose-energy gate: indeterminate diff base; scanning full tree (empty-tree base)"
+          else
+            mb="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"
+            BASE="${mb:-$BASE_REF}"
+          fi
+          echo "prose-energy gate: diffing against $BASE (HEAD $(git rev-parse HEAD))"
+          BASELINE_BASE=$(mktemp)
+          trap 'rm -f "$BASELINE_BASE"' EXIT
+          if [ "$BASE" = "$EMPTY_TREE" ]; then
+            cat "$BASELINE" >"$BASELINE_BASE" 2>/dev/null || true
+            echo "::warning::prose-energy gate: empty-tree base — baseline read from HEAD (self-exemption detection OFF, #958 inherited)"
+          else
+            git show "$BASE:$BASELINE" >"$BASELINE_BASE" 2>/dev/null || true
+          fi
+          retires=""
+          if [ "$BASE" != "$EMPTY_TREE" ]; then
+            retires="$(git log "$BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Energy-Budget:[[:space:]]*retires[[:space:]]+[^[:space:]]+' | head -5 || true)"
+          fi
+          list=$(mktemp)
+          trap 'rm -f "$list"' EXIT
+          if ! git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- ':(glob)**/AGENTS.md' ':(glob)**/SKILL.md' >"$list"; then
+            echo "::error::prose-energy gate: git diff against '$BASE' FAILED — refusing to report a pass. The gate scanned NOTHING; check that the base ref was fetched (fetch-depth: 0)."
+            exit 1
+          fi
+          fail=0
+          count=0
+          named=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$(basename "$f")" in AGENTS.md | SKILL.md) ;; *) continue ;; esac
+            [ -f "$f" ] || continue
+            case "$f" in
+              staging/* | dist/* | */dist/* | build/* | */build/* | *.min.js | \
+              vendor/* | */vendor/* | external/* | */external/* | \
+              third_party/* | */third_party/* | ThirdParty/* | */ThirdParty/* | \
+              node_modules/* | */node_modules/*) continue ;;
+            esac
+            b=$(wc -c <"$f")
+            IFS= read -r first <"$f" || true
+            case "$first" in
+              *AUTO-GENERATED* | *auto-generated* | *Auto-Generated* | *Auto-generated*) continue ;;
+            esac
+            [ "$b" -gt "$PROSE_MAX" ] || continue
+            count=$((count + 1))
+            base=$(awk -F'\t' -v p="$f" '$1==p {print $2+0}' "$BASELINE_BASE" 2>/dev/null || true)
+            head_base=$(awk -F'\t' -v p="$f" '$1==p {print $2+0}' "$BASELINE" 2>/dev/null || true)
+            [ -n "$base" ] && [ -z "$head_base" ] && base=""
+            tok=$((b * 10 / 36))
+            if [ -n "$base" ] && [ "$b" -le "$base" ]; then
+              echo "::warning::$f is $b bytes (~$tok tokens) — grandfathered (prose baseline $base). Retire or decompose to strike it."
+            elif [ -n "$base" ]; then
+              if [ -n "$retires" ]; then
+                echo "::warning::$f GREW to $b bytes (~$tok tokens, > baseline $base) — budgeted by the Energy-Budget trailer(s):"
+                printf '%s\n' "$retires" | while IFS= read -r r; do echo "::warning::  $r"; done
+                echo "::warning::  VERIFY the named retirement actually landed in this diff (the trailer names it; this gate cannot prove it)."
+                named=$((named + 1))
+              elif [ -n "$head_base" ] && [ "$head_base" -gt "$base" ]; then
+                echo "::error::$f GREW to $b bytes (~$tok tokens, > baseline $base) — and this diff RAISES its own $BASELINE entry to $head_base. A PR may not grant itself a higher ceiling (#958). Add an 'Energy-Budget: retires <path-or-law>' commit trailer, or DECOMPOSE."
+                fail=1
+              else
+                echo "::error::$f GREW to $b bytes (~$tok tokens, > baseline $base) — governance prose may not grow un-budgeted. Add an 'Energy-Budget: retires <path-or-law>' commit trailer naming the retired/merged prose, or DECOMPOSE (the governance-energy-budget law)."
+                fail=1
+              fi
+            elif [ -n "$head_base" ]; then
+              echo "::error::$f is $b bytes (~$tok tokens) — and this diff ADDS its own $BASELINE entry for it. A PR may not seed its own exemption (#958): land the baseline entry in a separate, reviewable PR first, or DECOMPOSE."
+              fail=1
+            else
+              echo "::error::$f is $b bytes (~$tok tokens) — NEW oversized governance prose in this diff. DECOMPOSE, or seed $BASELINE in a separate reviewable PR; the standing read is the fleet's energy budget."
+              fail=1
+            fi
+          done <"$list"
+          if [ "$fail" = 0 ]; then echo "prose-energy gate passed ($count over-cap prose file(s) in the changed set, 0 un-budgeted growth, $named budgeted by Energy-Budget trailers)"; fi
+          exit "$fail"
       - name: Gate-scope conformance
         shell: bash
         run: |

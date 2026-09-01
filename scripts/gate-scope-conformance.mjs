@@ -36,7 +36,18 @@ const SOURCES = [
   { rel: '.github/workflows/checks.yml', kind: 'workflow' },
   { rel: 'scripts/gen-token-budget-baseline.sh', kind: 'shell' },
   { rel: 'scripts/token-budget-check-changed.sh', kind: 'shell' },
+  // The prose-energy law's three copies (governance-energy-budget, born de-board-org-psy
+  // 2026-08-31) — in scope for the same reason the code law's copies are: nothing
+  // hand-maintained escapes comparison. Grouped separately via the `scan-family: prose` marker.
+  { rel: 'scripts/prose-byte-budget-gate.sh', kind: 'shell' },
+  { rel: 'scripts/gen-prose-byte-baseline.sh', kind: 'shell' },
 ];
+
+// GLOBS the scan-set extractor accepts. The original `/^\*\.[A-Za-z0-9]+$/` covered the code
+// law's flat extension globs; the prose-energy law (governance-energy-budget, born
+// de-board-org-psy 2026-08-31) scans AGENTS.md/SKILL.md BASENAMES, which need a glob with a
+// path component (`**/AGENTS.md`). Widened, not replaced: every old form still matches.
+const GLOB = /^(?:\*\.[A-Za-z0-9]+|\*+\/[A-Za-z0-9.\-]+\.[A-Za-z0-9]+)$/;
 
 /** Quoted tokens, single or double. Two flat alternatives — no nested quantifier, linear time. */
 function quotedTokens(s) {
@@ -44,8 +55,6 @@ function quotedTokens(s) {
   for (const m of s.matchAll(/'([^']*)'|"([^"]*)"/g)) out.push(m[1] !== undefined ? m[1] : m[2]);
   return out;
 }
-
-const GLOB = /^\*\.[A-Za-z0-9]+$/;
 
 /**
  * A size gate is identified by BEHAVIOUR — a block that MEASURES SIZE (`wc -l` / `wc -c`) — never
@@ -117,9 +126,24 @@ function scanSet(blockText) {
       tail = tail.slice(sep + 4);
     }
     sawLister = true;
-    for (const t of quotedTokens(tail)) if (GLOB.test(t)) exts.add(t.slice(1));
+    for (const t of quotedTokens(tail)) {
+      // git magic pathspecs (`':(glob)**/AGENTS.md'`) carry a mechanism prefix, not a path shape —
+      // strip the `:(glob)` introducer (quotedTokens already stripped the quotes) before the glob
+      // test, the same way the quotes are stripped.
+      const bare = t.replace(/^:?\(glob\)/, '');
+      if (GLOB.test(bare)) exts.add(bare);
+    }
   }
   return { exts, sawLister };
+}
+
+/** SCAN FAMILY: the law a gate enforces, declared in its own block via a `scan-family: <name>`
+ *  comment. Unmarked gates belong to the original file-size law. A DIFFERENT scan scope is legal
+ *  only when DECLARED — an undeclared divergent set is exactly the drift this drill exists to
+ *  catch, so it stays a failure. */
+function scanFamily(blockText) {
+  const m = blockText.match(/^\s*#\s*scan-family:\s*([a-z][a-z0-9-]*)\s*$/m);
+  return m ? m[1] : 'file-size';
 }
 
 /** SKIP SET: `case` arms whose body is `continue`. */
@@ -216,7 +240,7 @@ function main(argv) {
 
   const parsed = blocks.map((b) => {
     const { exts, sawLister } = scanSet(b.text);
-    return { name: b.name, exts, sawLister, skips: skipSet(b.text) };
+    return { name: b.name, exts, sawLister, skips: skipSet(b.text), family: scanFamily(b.text) };
   });
 
   // ---- FAIL-CLOSED: an empty extraction agrees with everything -------------------------------
@@ -241,25 +265,43 @@ function main(argv) {
   if (noScan.length || noSkip.length) return emit(checks, json, blocks);
 
   // ---- the actual conformance assertions -----------------------------------------------------
-  const scans = parsed.map((p) => ({ name: p.name, list: sorted(p.exts) }));
-  const scanAgree = scans.every((s) => same(s.list, scans[0].list));
-  add(
-    'scan-sets-agree',
-    scanAgree,
-    scanAgree
-      ? `all gates scan: ${scans[0].list.join(' ')}`
-      : scans.map((s) => `\n      ${s.name.padEnd(52)} ${s.list.join(' ')}`).join(''),
-  );
+  // Agreement is asserted PER SCAN FAMILY: copies of the SAME law must carry the same set (that is
+  // the drift this drill exists to catch — an unmarked copy diverging from its siblings lands in
+  // the unmarked family and fails here). A DIFFERENT law is legal only when it declares itself via
+  // a `scan-family:` marker, which puts it in its own group where the same agreement rule applies
+  // to its own copies.
+  const byFamily = new Map();
+  for (const p of parsed) {
+    if (!byFamily.has(p.family)) byFamily.set(p.family, []);
+    byFamily.get(p.family).push(p);
+  }
+  let scanAgree = true;
+  const scanDetail = [...byFamily.entries()]
+    .map(([fam, members]) => {
+      const lists = members.map((m) => sorted(m.exts));
+      const ok = lists.every((l) => same(l, lists[0]));
+      if (!ok) scanAgree = false;
+      return `${fam}: ${members.map((m) => m.name).join(', ')} → ${sorted(members[0].exts).join(' ')}${ok ? '' : ' (DIVERGED)'}`;
+    })
+    .join('\n      ');
+  add('scan-sets-agree', scanAgree, scanAgree ? scanDetail : scanDetail);
 
-  const skipsL = parsed.map((p) => ({ name: p.name, list: sorted(p.skips) }));
-  const skipAgree = skipsL.every((s) => same(s.list, skipsL[0].list));
-  add(
-    'skip-sets-agree',
-    skipAgree,
-    skipAgree
-      ? `all gates exempt: ${skipsL[0].list.join(' ')}`
-      : skipsL.map((s) => `\n      ${s.name.padEnd(52)} ${s.list.join(' ')}`).join(''),
-  );
+  const skipFam = new Map();
+  for (const p of parsed) {
+    if (!skipFam.has(p.family)) skipFam.set(p.family, []);
+    skipFam.get(p.family).push(p);
+  }
+  let skipAgree = true;
+  const skipDetail = [...skipFam.entries()]
+    .map(([fam, members]) => {
+      const lists = members.map((m) => sorted(m.skips));
+      const ok = lists.every((l) => same(l, lists[0]));
+      if (!ok) skipAgree = false;
+      const sets = ok ? '' : '\n' + members.map((m) => `      ${m.name}: {${sorted(m.skips).join(' ')}}`).join('\n');
+      return `${fam}: ${members.map((m) => m.name).join(', ')}${ok ? ' ✓' : ' (DIVERGED)'}${sets}`;
+    })
+    .join('\n      ');
+  add('skip-sets-agree', skipAgree, skipAgree ? skipDetail : skipDetail);
 
   // The asymmetric direction is the one that bites: an extension a GATE scans but the GENERATOR
   // does not can never be baselined, so it can never be grandfathered.
