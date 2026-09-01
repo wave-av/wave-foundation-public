@@ -6,10 +6,12 @@ name: Bot Review Gate
 # an internal WAVE repo and genericized. Register as a NON-required check first; after
 # validating, add "Bot Review Gate" to branch protection.
 #
-# AUTO-RESOLVE: before tallying, the gate resolves OUTDATED bot review threads (the flagged code
-# changed in a later commit → addressed), so fixed findings clear without a human. Bots re-review
-# each push and re-raise anything still broken. Conservative + fail-safe — see
-# rules/bot-review-auto-resolve.md. (Needs pull-requests: write.)
+# AUTO-RESOLVE (best-effort): before tallying, the gate TRIES to resolve OUTDATED bot review threads
+# (flagged code changed in a later commit → addressed). NOTE: GitHub does not let an Actions/App token
+# resolve a review thread ("Resource not accessible by integration" — only a user/PAT can), so this is
+# best-effort and usually a no-op. The real clears come from the bot resolving its own thread on
+# re-review (it re-reviews each push and re-raises anything still broken) or a maintainer resolving an
+# addressed thread. Fail-safe: a thread that can't be resolved is still COUNTED, never fail-open.
 # Action refs use tags; Renovate (pinDigests) pins them to SHA.
 
 on:
@@ -38,10 +40,11 @@ permissions:
 jobs:
   bot-review-gate:
     name: Bot Review Gate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
-      pull-requests: write # read bot review comments + auto-resolve addressed (outdated) bot threads
+      pull-requests: write # read bot review comments + best-effort resolve addressed (outdated) threads
       statuses: write # publish the aggregated "Bot Review Gate" commit status
+      checks: read # detect check-run-only reviewers (e.g. Cubic posts a check-run, not a PR comment)
     if: |
       github.event_name == 'pull_request' ||
       github.event_name == 'pull_request_review' ||
@@ -50,7 +53,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Classify Bot Findings
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             let prNumber, headSha;
@@ -96,6 +99,11 @@ jobs:
             ];
             const majorPatterns = [
               /🟠/, /\bP1\b/, /\bN\+1 query\b/i, /\bmissing auth\b/i,
+              // A5.3: Cursor BugBot's per-finding marker is a UNIQUE token emitted only on a real
+              // finding (never in prose or a legend), so it's a phantom-proof "this is actionable"
+              // signal — floors a Cursor inline comment at major. 🔴/P0/CWE above still escalate it
+              // to critical when present.
+              /BUGBOT_BUG_ID/,
             ];
             // CodeRabbit's auto-generated summary / walkthrough / rate-limit notices are status
             // comments, not findings — never classify them.
@@ -133,6 +141,14 @@ jobs:
                 if (/^(\*{1,2})?(Critical|Major|High)\1?\s*[:|-]\s*0\b/i.test(t)) return false;
                 if (/<summary>.*<\/summary>/i.test(t)) return false;
                 if (/^!\[/i.test(t)) return false;
+                // A LEGEND lists multiple severity levels in ONE line (e.g. "🔴 P0 · 🟠 P1 · 🟡 P2 · 🔵 P3",
+                // or any bot's footer key) — a real finding carries exactly ONE severity, never the whole
+                // ladder. Drop a line naming 2+ distinct P-levels OR 2+ distinct severity emojis, so a
+                // legend marker can't be mis-counted as a phantom critical (the wave-bugbot-footer class
+                // that held auto-merge on every bugbot PR). Belt-and-suspenders to the #556 source fix:
+                // generalizes to ANY bot's legend, and cannot suppress a single-severity real finding.
+                if (new Set((t.match(/\bP[0-3]\b/g) || [])).size >= 2) return false;
+                if (new Set((t.match(/🔴|🟠|🟡|🔵/g) || [])).size >= 2) return false;
                 return true;
               }).join('\n');
               for (const p of criticalPatterns) if (p.test(stripped)) return 'critical';

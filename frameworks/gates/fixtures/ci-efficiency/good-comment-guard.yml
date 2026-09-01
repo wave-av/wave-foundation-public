@@ -1,0 +1,13 @@
+name: good-comment-guard
+# COMMENT-FANOUT negative case: a comment trigger WITH a visible command-prefix guard
+# (and an author filter in the job if:) must produce no finding.
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  reply:
+    if: startsWith(github.event.comment.body, '/lint') && github.event.comment.user.login != 'dependabot[bot]'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - run: echo guarded

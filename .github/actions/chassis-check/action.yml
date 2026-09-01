@@ -1,0 +1,61 @@
+name: "WAVE Chassis Check"
+description: >-
+  Verifies a *.wave.online product worker repo depends on @wave-av/spoke-chassis,
+  has correctly-placed wrangler routes/custom_domain (no silent-noop trap), and
+  (optionally) that its deployed host serves the branded chassis landing. The
+  check scripts are co-located with this action so they resolve via the action
+  path in the CALLER's runner — no cross-repo checkout, no token needed; the
+  scripts travel with the action. See rules/every-product-host-on-chassis.md.
+
+inputs:
+  repo_path:
+    description: "Path to the product worker repo root (containing package.json)"
+    required: true
+  landing_host:
+    description: "Hostname to probe for chassis landing (e.g. clips.wave.online). Skipped if empty."
+    required: false
+    default: ""
+  wrangler_config:
+    description: "Path to wrangler.toml or wrangler.jsonc to check. Auto-discovers within repo_path if empty."
+    required: false
+    default: ""
+  node-version:
+    description: "Node version (must be 22+)"
+    required: false
+    default: "22"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Check @wave-av/spoke-chassis dependency
+      shell: bash
+      env:
+        REPO_PATH: ${{ inputs.repo_path }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: node "$ACTION_PATH/check-chassis-compliance.mjs" --repo "$REPO_PATH"
+
+    - name: Check wrangler config (routes/custom_domain placement trap)
+      shell: bash
+      env:
+        WRANGLER_CONFIG: ${{ inputs.wrangler_config }}
+        REPO_PATH_WRANGLER: ${{ inputs.repo_path }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ -n "$WRANGLER_CONFIG" ]; then
+          node "$ACTION_PATH/check-wrangler-config.mjs" "$WRANGLER_CONFIG"
+        else
+          # Auto-discover within the repo path (scripts are absolute via ACTION_PATH).
+          cd "$REPO_PATH_WRANGLER" && node "$ACTION_PATH/check-wrangler-config.mjs"
+        fi
+
+    - name: Probe chassis landing (deployed host)
+      if: ${{ inputs.landing_host != '' }}
+      shell: bash
+      env:
+        LANDING_HOST: ${{ inputs.landing_host }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: node "$ACTION_PATH/check-chassis-compliance.mjs" --landing "$LANDING_HOST"

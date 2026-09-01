@@ -1,0 +1,17 @@
+name: bad-a-double-fire
+# DOUBLE-FIRE: schedule: plus push: and pull_request: on one workflow. The daily cron is
+# slow and the runner is cheap, so ONLY the double-fire finding must fire here.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "30 5 * * *"
+concurrency:
+  group: bad-a-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - run: echo double

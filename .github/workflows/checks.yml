@@ -2,7 +2,7 @@ name: foundation checks
 
 # Reusable cross-project gate (the executable half of wave-foundation). Any WAVE repo runs the same
 # secret-scan + file-size gate by calling this:
-#   jobs: { gate: { uses: wave-av/wave-foundation/.github/workflows/checks.yml@master } }
+#   jobs: { gate: { uses: wave-av/wave-foundation/.github/workflows/checks.yml@v1 } }
 # One source of truth -> update here, every repo inherits it (no copying = no drift).
 on:
   workflow_call:
@@ -11,50 +11,1102 @@ on:
         type: number
         default: 800
         required: false
+      enforce_claude_config:
+        # Full-tree `.claude/` governance gate (job: claude-config). Shipped default OFF so it could
+        # not break repos carrying legacy `.claude/` debt; the org default flips true after the
+        # fleet-wide scrub. THE SCRUB IS DONE (2026-08-12) — receipt in the flipping PR.
+        # ARMING HAPPENS AT THE `v1` TAG MOVE, not this merge — and since every release re-points
+        # `v1` (RELEASING.md), scripts/advance-major-tag.sh enforces the review: it refuses to
+        # advance when gate input defaults changed unless the releaser acknowledges the arming
+        # with WAVE_ACK_GATE_ARMING=1. See CONSUME.md §3.
+        type: boolean
+        default: true
+        required: false
+      enforce_pr_body:
+        # PR-description floor gate (job: pr-body) — min 1200 chars, bot-authored exempt. Measured
+        # against 50 real merged PRs across five repos (zero false-positives; smallest solid body
+        # 1655 chars, one-liners 150-300). FAIL-CLOSED by default (deliberately NOT advisory-first —
+        # the house precedent of continue-on-error gates that never got promoted is a measured trap).
+        # A repo can flip this false to defer; the v1 tag-move arming review is the safety valve.
+        type: boolean
+        default: true
+        required: false
+      enforce_changelog:
+        # Public-changelog gate (job: changelog) — the public CHANGELOG.md must be non-empty under
+        # [Unreleased] and free of internal-only references (credentials, src/ paths, bare tickets,
+        # private repo names). ADVISORY during rollout (reports, does not block) so the fleet soaks
+        # before it refuses; promote to blocking after a clean window (the pr-body gate lesson).
+        # Uniform for private repos: a changelog can be mirrored public, so it is written public-safe.
+        type: boolean
+        default: true
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 0 # diff-scoped token-budget gate below needs merge-base history
+          persist-credentials: true # v7 sparse-checkout re-fetches the full tree; the persisted token is required for PRIVATE consumer repos
       - name: Secret scan (fail-closed, allowlist-aware)
         run: |
+          # This block is INLINE on purpose and must stay that way. checks.yml is a `workflow_call`
+          # reusable workflow: every checkout below omits `repository:`, so the tree in scope is the
+          # CALLER's. `frameworks/gates/scripts/secret-scan.sh` (the canonical copy this mirrors)
+          # does not exist in consumer repos, so calling it here would break every caller. Keep the
+          # two in behavioural sync instead; frameworks/gates/test-secret-scan.sh drills BOTH.
+          #
+          # Sanitize the allowlist BEFORE using it as a pattern source. `grep -F -f` reads a blank
+          # line as the EMPTY pattern, which matches every input line, so `-v` then discards every
+          # finding and the gate passes any tree. That is not hypothetical — a single blank line
+          # silently disabled this scanner (#926). `#` comments must go too: under -F they are
+          # literals, so a comment becomes a live substring exception.
+          ALLOW=$(mktemp)
+          trap 'rm -f "$ALLOW"' EXIT
+          if [ -f .github/.secret-allowlist ]; then
+            grep -vE '^[[:space:]]*($|#)' .github/.secret-allowlist > "$ALLOW" || true
+            if [ ! -s "$ALLOW" ] && [ -s .github/.secret-allowlist ]; then
+              echo "::error::.github/.secret-allowlist has content but sanitizes to ZERO patterns — every line is blank or a comment, so it grants no exceptions. Refusing to scan: a malformed exception list means NO exceptions, never 'no findings'."
+              exit 1
+            fi
+          fi
+          # An ABSENT allowlist leaves $ALLOW empty, and `grep -vFf` with an empty pattern file
+          # excludes nothing — i.e. no exceptions, which is the fail-closed default we want.
           # Real-secret patterns. Lines tagged "pragma: allowlist secret" (e.g. test fixtures / regex
           # definitions) are skipped — that's how a vetting module can define key-shapes without tripping.
+          # The allowlist is excluded from the scan itself: it enumerates credential SHAPES by design.
+          # `grep` exits 1 when it matches NOTHING — which for the final filter means the tree is
+          # CLEAN. GitHub runs this block under `/usr/bin/bash -e`, where that status aborts the
+          # step instantly with NO output: the gate failed precisely when there was nothing wrong,
+          # and said nothing about why. The canonical script does not have this bug because it sets
+          # `-uo pipefail` and DELIBERATELY omits -e — identical text, opposite behaviour, which is
+          # the cost of the duplication this file is required to carry.
+          #
+          # So the status is captured and CLASSIFIED rather than ignored. `|| true` would also stop
+          # the abort, and would be wrong: it erases the difference between "found nothing" and
+          # "grep could not run", which is the #944 fail-open in a new place.
+          #   0 = matched   1 = no match (clean)   >1 = grep itself failed
+          set +e
           HITS=$(grep -rIEn '(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|-----BEGIN [A-Z ]*PRIVATE KEY)' \
-              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . | grep -v 'allowlist secret' \
-              | { [ -f .github/.secret-allowlist ] && grep -vFf .github/.secret-allowlist || cat; } || true)
+              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
+              --exclude=.secret-allowlist . 2>/dev/null | grep -v 'allowlist secret' \
+              | grep -vFf "$ALLOW")
+          rc=$?
+          set -e
+          if [ "$rc" -gt 1 ]; then
+            echo "::error::secret-scan: the scan pipeline failed (exit $rc) — refusing to report clean. A scanner that cannot run is not a scanner that found nothing."
+            exit 1
+          fi
           if [ -n "$HITS" ]; then echo "::error::secret-like pattern found — do not commit credentials"; echo "$HITS"; exit 1; fi
           echo "secret-scan clean"
       - name: File-size gate
         env:
           MAX: ${{ inputs.max_lines }}
         run: |
+          # rules/file-size-limits.md is LAW: a size gate is an architecture signal — DECOMPOSE, never
+          # trim context to pass it. Vendored / harvested material under staging/ is exempt BY PATH (a
+          # path rule, not a hand-maintained list); the .filesize-allowlist remains only for a rare,
+          # auditable first-party exception. MAX defaults to 800 (the first-party cap).
+          #
+          # VENDORED BY DECLARATION (#1160). The `staging/*` rule above encodes ONE spelling of
+          # "harvested", and it is wave-foundation's own. A consumer whose harvested corpus is
+          # organised by vendor (wave-research: betterstack/ devin/ kernel/ codecov/) is punished
+          # for a BETTER layout — its 3,402-line `codecov/api/openapi.yaml` is a crawled upstream
+          # artifact that DECOMPOSE cannot address, because we do not author it. So the path rule
+          # stays a path rule and becomes declarable: a repo marks its harvested trees
+          # `linguist-vendored` in its own .gitattributes, and this gate honours that.
+          #
+          # WHY THIS ATTRIBUTE and not a new workflow input: git itself does the glob matching, so
+          # we inherit .gitattributes precedence/nesting/negation instead of reimplementing it in
+          # bash; and the declaration already pays for itself independently — GitHub collapses
+          # these files in diffs and drops them from language stats. A repo has a reason to keep it
+          # honest that has nothing to do with this gate.
+          #
+          # SCOPE — THIS GATE ONLY. A vendored declaration must NEVER reach the secret-scan step.
+          # Aikido's Excluded-Paths control had no per-scanner scoping and silently took 14 secret
+          # findings and 3 criticals along with the noise it was aimed at. Harvested code is exactly
+          # where a real leaked credential hides, so it is scanned for secrets like anything else;
+          # all this exemption says is "we did not write it, so we cannot decompose it".
+          #
+          # NOT A SILENT WIDENING: every exemption is ECHOED below. The gate already trusts a
+          # consumer-committed `.github/.filesize-allowlist`, so consumer-declared exemption is not
+          # a new trust class — but a glob can cover files nobody enumerated, so the log names each
+          # one. `set` alone exempts: `-linguist-vendored` yields `unset` and stays gated.
           fail=0
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP. `done < <(cmd)` cannot propagate cmd's
+          # exit status, and `pipefail` does not reach through process substitution — so a lister
+          # that FAILS is indistinguishable from one that found NOTHING: both leave the loop with
+          # nothing to read and fall through to the "passed" line. #930 was one instance; this is
+          # the class. Only the ENUMERATOR's status is fatal; a downstream FILTER exiting 1 means
+          # "no lines selected", which is a legitimate empty result (hence `|| true` below).
+          # SCAN SET (#586 step 3) — the SAME 20 extensions in every copy of this list (here, the
+          # token-budget gate below, gen-token-budget-baseline.sh, token-budget-check-changed.sh,
+          # and the pre-commit mirror: check-file-size.sh + registry.yaml/.pre-commit-config.yaml).
+          # It is the authoring hook's 21 governed extensions MINUS .vue/.cpp/.rs, plus .yml/.yaml
+          # (#1129): measured across the 126 consumer repos, those three are the only ones with
+          # pre-existing violations of THIS gate (59 files across three private consumer repos), and
+          # this gate is whole-tree with no baseline — so adding them turns `gate / checks` red on
+          # every PR in those repos with no path to green. Held until that debt is decomposed or
+          # this gate gains grandfathering (#586).
+          list=$(mktemp); trap 'rm -f "$list"' EXIT
+          if ! git ls-files -- \
+            '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.py' '*.go' '*.rb' \
+            '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cc' '*.sh' '*.bash' '*.svelte' \
+            '*.yml' '*.yaml' \
+            >"$list"; then
+            echo "::error::file-size gate: git ls-files FAILED — refusing to report a pass. The gate scanned NOTHING; treat this as a blocked check, not a green one."
+            exit 1
+          fi
+          # Resolve `linguist-vendored` for the whole scan set in ONE git invocation (not per file).
+          # -z is load-bearing on BOTH ends: the default output is `<path>: <attr>: <value>`, which
+          # is ambiguous for a path containing ": ", so git emits NUL-separated triples instead and
+          # bash reads them back with `read -d ''`. Note -z also makes git expect NUL-separated
+          # INPUT, hence the `tr` — feeding it newlines silently reads the entire list as ONE path.
+          vend=$(mktemp); attrs=$(mktemp); trap 'rm -f "$list" "$vend" "$attrs"' EXIT
+          if tr '\n' '\0' <"$list" | git check-attr -z --stdin linguist-vendored >"$attrs" 2>/dev/null; then
+            while IFS= read -r -d '' p && IFS= read -r -d '' _a && IFS= read -r -d '' v; do
+              [ "$v" = "set" ] && printf '%s\n' "$p"
+            done <"$attrs" >"$vend"
+          else
+            # FAIL CLOSED, and the closed direction here is the STRICT one: an unreadable
+            # .gitattributes grants NO exemptions, so the gate over-reports rather than under-reports.
+            # This is deliberately not `exit 1` — unlike a broken ENUMERATOR (which would make the
+            # gate scan nothing and pass vacuously), a broken exemption reader can only make the
+            # gate harsher, and a repo with no .gitattributes at all is the overwhelmingly common
+            # case rather than an error.
+            echo "::warning::file-size gate: git check-attr failed — honouring NO linguist-vendored exemptions (fail-closed)."
+            : >"$vend"
+          fi
+          nvend=0
           while IFS= read -r f; do
-            grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # justified exception
-            n=$(wc -l < "$f")
-            if [ "$n" -gt "$MAX" ]; then echo "::error::$f has $n lines (> $MAX)"; fail=1; fi
-          done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' | grep -vE '\.(types|d)\.ts$')
-          if [ "$fail" = 0 ]; then echo "file-size gate passed (all <= $MAX lines)"; fi
+            case "$f" in
+              staging/* | dist/* | */dist/* | build/* | */build/* | *.min.js | \
+              vendor/* | */vendor/* | external/* | */external/* | \
+              third_party/* | */third_party/* | ThirdParty/* | */ThirdParty/* | \
+              node_modules/* | */node_modules/* | \
+              pnpm-lock.yaml | */pnpm-lock.yaml | pnpm-lock.yml | */pnpm-lock.yml) \
+                continue ;; # vendored / generated — exempt by PATH (lockfiles: generated artifacts a
+                            # diff cannot decompose — the 2026-08-29 fleet census found pnpm locks at
+                            # 108KB/58KB inside the scan set, so every dep bump in those repos tripped
+                            # the gate on a file nobody can shrink. A first-line marker is impossible
+                            # here: the package manager rewrites line 1 on every install.)
+            esac
+            if grep -qxF -- "$f" "$vend"; then                                  # declared vendored by the repo's own .gitattributes
+              n=$(wc -l < "$f")
+              if [ "$n" -gt "$MAX" ]; then
+                echo "file-size gate: exempt (linguist-vendored) $f — $n lines"  # named, never silent
+                nvend=$((nvend + 1))
+              fi
+              continue
+            fi
+            grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # rare, auditable first-party exception
+            # Generated-artifact marker, same widened casings as the token-budget gate below (a
+            # generated file is exempt from BOTH axes; the marker classes are one law).
+            IFS= read -r firstline <"$f" || true
+            case "$firstline" in *AUTO-GENERATED*|*auto-generated*|*Auto-Generated*|*Auto-generated*) continue ;; esac
+            n=$(wc -l < "$f" 2>/dev/null) || { echo "::warning::file-size gate: UNREADABLE $f (in index, absent from tree) — not measured; named, never silent"; continue; }
+            if [ "$n" -gt "$MAX" ]; then echo "::error::$f has $n lines (> $MAX) — DECOMPOSE: extract a cohesive module/stage; do NOT trim context to fit (rules/file-size-limits.md is LAW)."; fail=1; fi
+          done < <(grep -vE '\.(types|d)\.ts$' "$list" || true)
+          if [ "$fail" = 0 ]; then echo "file-size gate passed (all <= $MAX lines; staging/ vendored exempt by path; $nvend oversized file(s) exempt by linguist-vendored)"; fi
+          exit "$fail"
+
+      - name: Token-budget gate (ratchet, diff-scoped)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # The PR's own head SHA. Used ONLY to recognise GitHub's synthetic merge commit — see the
+          # base derivation below. Passed through `env:` like its siblings rather than interpolated
+          # into the script body, because `${{ }}` inside `run:` is a script-injection sink.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # RATCHET (was shadow-before-enforce; hardened to blocking 2026-07-08 after a clean fleet survey).
+          # Complements the line gate on the axis that matters for agent context — TOKENS. Lines can be tiny
+          # while tokens are huge (a base64 blob is 1 line / 90k tokens), so a line cap is blind to the
+          # embedded-asset bloat a token gate catches. Byte-proxy for BPE tokens (BYTES/3.6; calibrated median
+          # 3.72 on a 432-file first-party corpus) keeps this stdlib-only. 21600 bytes ≈ 6000 tokens.
+          #
+          # DIFF-SCOPED (2026-07-08): evaluates ONLY files introduced/changed in this PR/push — mirrors
+          # governance-enforce.yml's @wave-av/governance `--changed <base>` model. BASE is derived the same
+          # way (PR base sha / merge-queue base sha / push before-sha), narrowed to the merge-base with HEAD
+          # (shell-check-changed.sh's pattern), with an empty-tree fallback for an indeterminate base so a
+          # first-push/force-push never silently skips commits. This auto-grandfathers every pre-existing
+          # oversized file fleet-wide with NO per-repo baseline seed required — a file nobody touched in this
+          # diff cannot fail the gate, full stop.
+          #
+          # The .token-budget-baseline growth-ratchet still composes on top, WITHIN the diff: a touched file
+          # that was already baselined may not GROW past its baseline; a touched file with no baseline entry
+          # over cap is a NEW violation. Untouched baselined (or unbaselined-but-oversized) files are simply
+          # out of scope — that's the whole point of grandfathering by diff instead of by baseline file.
+          # Exemptions (never authored context an agent must hold): staging/, dist/ + build/ output, *.min.js,
+          # files marked AUTO-GENERATED on line 1, the shared .filesize-allowlist, and — as of #1160 —
+          # paths the repo declares `linguist-vendored` in its own .gitattributes. This is the BYTE tier
+          # of the same two-tier law as the line gate above, with the same rationale in the same words, so
+          # it takes the same declaration: exempting a harvested file from one tier and not the other would
+          # leave the class half-closed, and the repo would simply hit the other half on its next crawl.
+          # Same hard scope: NEVER secret-scan.
+          #
+          # SELF-CONTAINED (2026-07-09): the logic is INLINED here — a consumer of this reusable workflow
+          # needs NOTHING vendored, exactly like the secret-scan and file-size gates above. Previously this
+          # step ran `bash scripts/token-budget-check-changed.sh` from the CALLER's checkout, which required
+          # every spoke to vendor that script; when the moving @v1 tag advanced to this step, no consumer had
+          # it and `gate / checks` failed exit 127 fleet-wide. foundation cannot be checked out from a
+          # consumer's CI (private repo, caller GITHUB_TOKEN lacks read), so inlining — not a cross-repo
+          # checkout — is the correct self-contained fix. scripts/token-budget-check-changed.sh remains the
+          # local/tested reference (scripts/token-budget-check-changed.test.mjs drills it); keep this inlined
+          # copy behaviorally in sync with it (same comment-enforced norm as gen-token-budget-baseline.sh).
+          # The PATHSPEC below is no longer comment-enforced: token-budget-check-changed.test.mjs asserts it
+          # is character-identical to the script's. A comment asking two copies to agree is not a control —
+          # this pair had already drifted from self-check.yml, which has scanned '*.sh' all along (#581).
+          BYTE_MAX=21600
+          BASELINE=".github/.token-budget-baseline"
+          ALLOWLIST=".github/.filesize-allowlist"
+          BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
+          # GITHUB'S SYNTHETIC PR MERGE COMMIT (claude-workstation#1605). actions/checkout resolves
+          # `refs/pull/N/merge` on pull_request events — a merge of the CURRENT base branch into the
+          # PR head — while PR_BASE_SHA is frozen at the base-branch tip from when the event fired.
+          # Diffing that stale base against the merge commit reports every PEER commit merged in
+          # between as ADDED work belonging to THIS pull request. Measured on claude-workstation
+          # #1591: the voice gate failed the PR over a `human` line in a plan doc it never touched,
+          # already on main from someone else's merged work, and named that author's file in the
+          # annotation. It fires precisely when a branch falls behind its base, which on a busy repo
+          # is minutes. The FIRST parent of that merge commit is the base-branch tip GitHub merged,
+          # so it is the only base that yields the pull request's own contribution.
+          #
+          # The `head2 = PR_HEAD_SHA` test is load-bearing and must NEVER be relaxed to "HEAD has two
+          # parents". An AUTHOR who merges the base branch into their own branch produces a head
+          # whose parents mean the OPPOSITE — ^1 is their branch, ^2 is the base — so taking ^1 there
+          # would report the ENTIRE base branch as added: strictly worse than the bug being fixed,
+          # and this exact shape was observed live on #1591 ("Merge remote-tracking branch
+          # 'origin/main' into fix/..."). Only `refs/pull/N/merge` carries the PR head as its SECOND
+          # parent, so that equality is what distinguishes the two, not the parent count.
+          head2="$(git rev-parse -q --verify 'HEAD^2' 2>/dev/null || true)"
+          if [ -n "$PR_HEAD_SHA" ] && [ -n "$head2" ] && [ "$head2" = "$PR_HEAD_SHA" ]; then
+            BASE_REF="$(git rev-parse 'HEAD^1')"
+          fi
+          EMPTY_TREE=$(git hash-object -t tree /dev/null)
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$EMPTY_TREE"
+            echo "::warning::indeterminate diff base; scanning full tree (empty-tree base) so no commit is skipped"
+          else
+            mb="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"
+            BASE="${mb:-$BASE_REF}"
+          fi
+          # Print WHAT WAS SCANNED, not only what it was compared against. #1605 took several runs
+          # to diagnose because the log named the base and never the head, so the one hypothesis that
+          # explained it (HEAD is a merge commit, not the branch tip) could not be told from the one
+          # that did not — and the arithmetic looked consistent with the wrong one.
+          echo "token-budget gate: diffing against $BASE (HEAD $(git rev-parse HEAD))"
+          # THE CONTROL FILES COME FROM THE BASE, NOT HEAD (#958). Both files that grant exemptions
+          # live INSIDE the diff being judged, so reading them from the working tree let one commit
+          # push a file over the cap AND append the line excusing it. The allowlist arm was the worse
+          # of the two: it `continue`s BEFORE the size check, so this step printed `0 over-cap
+          # file(s) in the changed set` — byte-identical to a genuinely clean diff, with no signal
+          # anywhere that a 21 KB file had landed. An entry is honoured only if it exists at BASE
+          # *and* still exists at HEAD: adding one cannot take effect in its own PR, while REMOVING
+          # one (burndown) bites immediately. The grandfathered byte value always comes from the BASE
+          # copy, so a PR cannot raise its own ceiling. Absent at base is EMPTY, never permission.
+          list=$(mktemp)
+          ALLOW_BASE=$(mktemp)
+          BASELINE_BASE=$(mktemp)
+          vend=$(mktemp)
+          attrs=$(mktemp)
+          trap 'rm -f "$list" "$ALLOW_BASE" "$BASELINE_BASE" "$vend" "$attrs"' EXIT
+          if [ "$BASE" = "$EMPTY_TREE" ]; then
+            # No base to read from. Falling through with empty control files would fail every
+            # grandfathered file in the tree on a first push / force push, so this mode reads HEAD as
+            # before — and SAYS SO. A check that quietly downgrades itself is the same defect again.
+            cat "$ALLOWLIST" >"$ALLOW_BASE" 2>/dev/null || true
+            cat "$BASELINE" >"$BASELINE_BASE" 2>/dev/null || true
+            echo "::warning::empty-tree base: self-exemption detection is OFF (#958) — control files read from HEAD, because there is no base version to compare them against."
+          else
+            git show "$BASE:$ALLOWLIST" >"$ALLOW_BASE" 2>/dev/null || true
+            git show "$BASE:$BASELINE" >"$BASELINE_BASE" 2>/dev/null || true
+          fi
+          fail=0
+          count=0
+          exempt=0 # allowlist bypasses actually TAKEN on the byte axis (#2562) — initialised here so `set -u` can never see it unset
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate above for the
+          # class. #930 fixed one *cause* of this lister failing (the invalid three-dot expression);
+          # this makes any OTHER cause (unfetched base, corrupt object, shallow clone) loud instead
+          # of reporting a green pass over zero scanned files.
+          # TWO-DOT, not three (#930): `A...B` is symmetric difference and is defined only for
+          # COMMITS. The empty-tree fallback above hands this a TREE, so git refused with
+          # "Invalid symmetric difference expression", the loop read nothing, and the gate printed
+          # `passed` — blind in exactly the case the fallback exists to cover. Equivalent on the
+          # normal path, where $BASE has already been narrowed to the merge-base.
+          # SCAN SET — identical to the file-size gate's list above and to every other copy (#586 step 3).
+          if ! git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- \
+            '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.py' '*.go' '*.rb' \
+            '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cc' '*.sh' '*.bash' '*.svelte' \
+            '*.yml' '*.yaml' \
+            >"$list"; then
+            echo "::error::token-budget gate: git diff against '$BASE' FAILED — refusing to report a pass. The gate scanned NOTHING; check that the base ref was fetched (fetch-depth: 0)."
+            exit 1
+          fi
+          # linguist-vendored, resolved in ONE invocation — identical treatment to the line gate above.
+          # -z on BOTH ends: default output is `<path>: <attr>: <value>`, ambiguous for a path containing
+          # ": "; -z also makes git expect NUL-separated INPUT, hence the `tr`.
+          if tr '\n' '\0' <"$list" | git check-attr -z --stdin linguist-vendored >"$attrs" 2>/dev/null; then
+            while IFS= read -r -d '' p && IFS= read -r -d '' _a && IFS= read -r -d '' v; do
+              [ "$v" = "set" ] && printf '%s\n' "$p"
+            done <"$attrs" >"$vend"
+          else
+            # FAIL CLOSED toward STRICTER: no exemptions honoured, never "everything exempt".
+            echo "::warning::token-budget gate: git check-attr failed — honouring NO linguist-vendored exemptions (fail-closed)."
+            : >"$vend"
+          fi
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue # skip deletions — nothing to size
+            case "$f" in
+              staging/* | dist/* | */dist/* | build/* | */build/* | *.min.js | \
+              vendor/* | */vendor/* | external/* | */external/* | \
+              third_party/* | */third_party/* | ThirdParty/* | */ThirdParty/* | \
+              node_modules/* | */node_modules/* | \
+              pnpm-lock.yaml | */pnpm-lock.yaml | pnpm-lock.yml | */pnpm-lock.yml) \
+                continue ;; # vendored / generated — exempt by PATH (lockfiles: generated artifacts a
+                            # diff cannot decompose — same exemption as the line gate above; see the
+                            # 2026-08-29 fleet census note there)
+            esac
+            if grep -qxF -- "$f" "$vend"; then                                  # declared vendored by the repo's own .gitattributes
+              b=$(wc -c <"$f")
+              if [ "$b" -gt "$BYTE_MAX" ]; then echo "token-budget gate: exempt (linguist-vendored) $f — $b bytes"; fi
+              continue                                                          # named, never silent
+            fi
+            # Present at BASE *and* still at HEAD (#958). Base-only would make burndown removals a
+            # no-op; head-only is the hole this closes.
+            if grep -qxF "$f" "$ALLOW_BASE" 2>/dev/null && grep -qxF "$f" "$ALLOWLIST" 2>/dev/null; then
+              # NAMED, never silent (#2562) — the same property the linguist-vendored arm above already
+              # has. This arm used to `continue` BEFORE the size check and before `count`, so an
+              # allowlisted file that had grown past $BYTE_MAX left NO trace anywhere: the summary
+              # printed `0 over-cap file(s) in the changed set`, byte-identical to a genuinely clean
+              # diff. Proven live — .github/workflows/auto-merge.yml went 64097 -> 67075 bytes in
+              # claude-workstation#2393 and this gate reported 0. The EXEMPTION IS UNCHANGED (still an
+              # unconditional `continue`, still no effect on $fail); only its silence is fixed.
+              b=$(wc -c <"$f")
+              if [ "$b" -gt "$BYTE_MAX" ]; then
+                # Strip CR/LF and escape % before the path reaches a workflow command: Actions parses
+                # any stdout line beginning `::`, so an embedded newline could forge one, and the
+                # runner decodes %25/%0D/%0A in message data, so a literal % could corrupt the rendered
+                # annotation (same hardening as #1099). `git diff` quotes such paths under the default
+                # core.quotePath, which the `[ -f "$f" ]` test above then rejects — but that is
+                # CONFIG, not a guarantee, so this does not lean on it.
+                safe=$(printf '%s' "$f" | tr -d '\r\n' | sed 's/%/%25/g')
+                echo "::warning::$safe is $b bytes (~$((b * 10 / 36)) tokens > ~6000) — EXEMPT via $ALLOWLIST. That allowlist exempts the BYTE axis as well as the line axis it was written for, and it outranks any $BASELINE row for the same path. Strike the entry and DECOMPOSE."
+                exempt=$((exempt + 1))
+              fi
+              continue # same allowlist as the line gate
+            fi
+            IFS= read -r first <"$f" || true # line 1 only
+            # Generated-artifact marker, CASE-WIDENED (2026-08-29): openapi-typescript's standard
+            # header is "This file was auto-generated by openapi-typescript." — lowercase, so the
+            # original case-sensitive *AUTO-GENERATED* glob never matched it and the 131KB
+            # api-spec/generated/api-types.d.ts sat unexempted in the trip-risk set (fleet census).
+            # The common generator casings are all honored now; a generator emitting any other
+            # spelling still needs a baseline row or an allowlist entry.
+            case "$first" in
+              *AUTO-GENERATED* | *auto-generated* | *Auto-Generated* | *Auto-generated*) continue ;;
+            esac                # generated embedded-asset source
+            b=$(wc -c <"$f")
+            [ "$b" -gt "$BYTE_MAX" ] || continue
+            count=$((count + 1))
+            # `|| true` is load-bearing. A MISSING baseline is legitimate (the file is a seed most repos
+            # never needed). Reading it unguarded made that a CRASH: this step runs under bash -e, awk
+            # exits 2 on the absent file, 2>/dev/null hides the message but not the status, and the
+            # substitution killed the step mid-loop — the ::error:: naming the file never printed and
+            # the author saw a bare exit 2. Empty base routes to the NEW-oversized branch (fail-closed).
+            base=$(awk -F'\t' -v p="$f" '$1==p {print $2+0}' "$BASELINE_BASE" 2>/dev/null || true) # +0 coerces to int
+            head_base=$(awk -F'\t' -v p="$f" '$1==p {print $2+0}' "$BASELINE" 2>/dev/null || true)
+            # Deleted at HEAD => no longer grandfathered, effective this PR (the burndown half of #958).
+            [ -n "$base" ] && [ -z "$head_base" ] && base=""
+            tok=$((b * 10 / 36))
+            if [ -n "$base" ] && [ "$b" -le "$base" ]; then
+              echo "::warning::$f is $b bytes (~$tok tokens > ~6000) — grandfathered (baseline $base). DECOMPOSE to strike it from $BASELINE."
+            elif [ -n "$base" ]; then
+              if [ -n "$head_base" ] && [ "$head_base" -gt "$base" ]; then
+                echo "::error::$f GREW to $b bytes (~$tok tokens, > baseline $base) — and this diff RAISES its $BASELINE entry to $head_base to cover it. A PR may not grant itself a higher ceiling (#958): the ratchet reads the baseline from the merge base. DECOMPOSE (rules/file-size-limits.md is LAW); never trim context to fit."
+              else
+                echo "::error::$f GREW to $b bytes (~$tok tokens, > baseline $base) — a grandfathered oversized file may not grow. DECOMPOSE (rules/file-size-limits.md is LAW); never trim context to fit."
+              fi
+              fail=1
+            elif grep -qxF "$f" "$ALLOWLIST" 2>/dev/null; then
+              echo "::error::$f is $b bytes (~$tok tokens > ~6000) — and this diff ADDS its own $ALLOWLIST entry for it. A PR may not grant itself an exemption (#958): land the allowlist entry in a separate, reviewable PR first, or DECOMPOSE."
+              fail=1
+            elif [ -n "$head_base" ]; then
+              echo "::error::$f is $b bytes (~$tok tokens > ~6000) — and this diff ADDS its own $BASELINE entry for it. A PR may not grant itself an exemption (#958): the baseline is seed/tighten-only. Land the entry in a separate, reviewable PR first, or DECOMPOSE."
+              fail=1
+            else
+              echo "::error::$f is $b bytes (~$tok tokens > ~6000) — NEW oversized file in this diff. DECOMPOSE or extract embedded assets; do NOT trim context to fit."
+              fail=1
+            fi
+          done < <(grep -vE '\.(types|d)\.ts$' "$list" || true)
+          if [ "$fail" = 0 ]; then echo "token-budget ratchet passed (diff-scoped: $count over-cap file(s) in the changed set, 0 new/grown, $exempt over-cap file(s) exempted by $ALLOWLIST)"; fi
+          exit "$fail"
+      - name: Gate-scope conformance
+        shell: bash
+        run: |
+          # BLOCKING as of the #586 fix. This step shipped as a shadow (continue-on-error + `|| true`)
+          # because the drift it reports was real and unfixed, and blocking on it would have wedged
+          # every PR in this repo with no path to green. The four lists now agree — verified by
+          # scripts/gate-scope-conformance.test.mjs, whose `live` case asserts exactly that — so the
+          # condition its own comment named for hardening is met. Same shadow-then-enforce path the
+          # token-budget gate above took on 2026-07-08.
+          #
+          # A shadow gate left shadowed after its blocker clears is not caution, it is a gate that
+          # prints into a log nobody reads. The drift took months to notice precisely because the
+          # only thing watching it was a comment asking a human to keep four copies in sync.
+          #
+          # WHAT IT ASSERTS: the file-size law is enforced by FOUR hand-maintained copies of the
+          # same two lists — the two gates above, gen-token-budget-baseline.sh, and
+          # token-budget-check-changed.sh — and nothing compared them. Line 96 above literally asks
+          # a human to "keep this inlined copy behaviorally in sync". This is that mechanism.
+          #
+          # FOUNDATION-ONLY, fail-closed against caller code: this is a reusable workflow, so the
+          # checkout above is the CALLER's repo; running `node scripts/...` unconditionally would
+          # execute whatever file a consumer ships at that path (caller-controlled code in a step
+          # that was never meant to run it). The four sources this checker compares only exist
+          # HERE, so gate on GITHUB_REPOSITORY (runner-set, not caller YAML) and no-op elsewhere.
+          # A cross-repo checkout of foundation is NOT an option: this repo is private and a
+          # consumer's GITHUB_TOKEN cannot read it (same constraint documented on line ~94).
+          if [ "$GITHUB_REPOSITORY" != "wave-av/wave-foundation" ]; then
+            echo "gate-scope conformance: sources live in wave-foundation only; no-op for consumers"
+            exit 0
+          fi
+          node scripts/gate-scope-conformance.mjs
+      - name: Workflow-policy enforce
+        shell: bash
+        run: |
+          # WAS Phase 2 terminal: enforcing (no longer shadow/report-only).
+          # Lints .github/workflows/*.yml against the WAVE Workflow Authoring Standard
+          # (wave-foundation/rules/workflow-authoring.md). Emits ::error:: per
+          # violation and fails the build if any violation is found.
+          # Ensure PyYAML is present; retry to absorb transient PyPI/network blips.
+          # rule5 admits only pip-capable images fleet-wide (GitHub-hosted/Blacksmith ubuntu, plus
+          # Blacksmith macOS, whose images track GitHub's macOS images and ship python3+pip), so
+          # this should always resolve; if it genuinely can't, the guard below fails CLOSED
+          # (WAS enforce hardening).
+          for _ in 1 2 3; do
+            python3 -c "import yaml" 2>/dev/null && break
+            pip install --quiet --disable-pip-version-check pyyaml 2>/dev/null || true
+            sleep 2
+          done
+          python3 - <<'PY'
+          import glob, os, re, subprocess, sys
+          try:
+              import yaml
+          except Exception:
+              print("::error::workflow-policy: PyYAML unavailable on this runner after retries — "
+                    "WAS enforce now FAILS CLOSED by design (previously a fail-open report-only hole). "
+                    "Fix: give the runner egress to PyPI, or pre-provision pyyaml in the image. "
+                    "rule5 allows only pip-capable images (GitHub-hosted/Blacksmith ubuntu or "
+                    "Blacksmith macOS), so a runner missing pyyaml is itself out of policy.")
+              sys.exit(1)
+
+          ALLOWED_RUNNERS = {"ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04"}
+          # Blacksmith runners register with GitHub as SELF-HOSTED, so they consume ZERO GitHub Actions
+          # minutes and execute even while the org's Actions spending cap is exhausted (2026-07-26
+          # outage: every GitHub-hosted job in wave-av died in 2s with "steps": []). Same ubuntu image
+          # family, same tooling, pip-capable — so they are policy-equivalent to ubuntu-latest for the
+          # fleet's short gates. Anchored + closed enumeration on purpose: `runs-on` here is UNTRUSTED
+          # caller YAML (checks.yml lints the CALLING repo), so "starts with blacksmith-" would let any
+          # attacker-chosen label through. Only these exact shapes pass.
+          BLACKSMITH_RUNNER_RE = re.compile(r"^blacksmith-(2|4|8|16|32)vcpu-ubuntu-(2204|2404)(-arm)?$")
+          # Blacksmith's macOS catalogue (Apple Silicon M4, ARM64). Admitted for exactly the three
+          # reasons the ubuntu comment above gives, all of which hold identically here: these
+          # register as SELF-HOSTED, consume ZERO GitHub Actions minutes, and keep executing while
+          # the org's Actions cap is exhausted. So this is NOT a loosening toward paid GitHub-hosted
+          # runners — `macos-latest` and friends stay out of ALLOWED_RUNNERS and still fail rule5.
+          # The old regex was simply STALE against the vendor's offering: it predates Blacksmith
+          # shipping macOS, so it rejected a runner the policy's own rationale already covered.
+          #
+          # WHY THIS MATTERS beyond convenience: hooks and CLI tooling authored on macOS are today
+          # certified only on ubuntu, which produces MISDIRECTED signals — green in CI, red on the
+          # machine that actually runs them (claude-workstation#1542/#1547). A macOS leg is the only
+          # thing that catches the behavioural half of that class, and Xcode/iOS CI will need this
+          # same entry.
+          #
+          # Anchored + closed enumeration, for the same reason as above and it is load-bearing:
+          # `runs-on` is UNTRUSTED caller YAML, so the vCPU counts and OS versions are enumerated
+          # rather than pattern-matched. A prefix test like startswith("blacksmith-") would let any
+          # attacker-chosen label through.
+          BLACKSMITH_MACOS_RUNNER_RE = re.compile(r"^blacksmith-(6|12)vcpu-macos-(latest|26|15)$")
+
+          # Depot-managed runners (depot.dev) — the GitHub-App runner vendor the fleet adopts after the
+          # Blacksmith lapse (Aug 6). Same three cap-surviving properties as the Blacksmith comments above:
+          # they bill ZERO GitHub Actions minutes, keep executing while the org's spending cap is exhausted,
+          # and ship pip-capable images. Anchored + closed enumeration for the same UNTRUSTED-caller-YAML
+          # reason (runs-on is caller YAML; a prefix test like startswith("depot-") would let any
+          # attacker-chosen label through).
+          DEPOT_UBUNTU_RUNNER_RE = re.compile(r"^depot-ubuntu-(latest|22\.04|24\.04)$")
+          # Depot's macOS catalogue: Apple M2 on macOS 14/15, Apple M4 on macOS 26. depot-macos-latest
+          # aliases macOS 15; depot-macos-26 is the M4 (Apple Silicon) label the fleet's macOS control arm
+          # (hook-tests-macos) needs. Admitted for the same self-hosted / zero-minutes / cap-surviving
+          # reasons as Blacksmith macOS; GitHub-hosted `macos-latest` stays disallowed.
+          DEPOT_MACOS_RUNNER_RE = re.compile(r"^depot-macos-(latest|26|15|14)$")
+
+          # rule9 inputs. `cancel-in-progress` only strands a check-run when two runs can exist for
+          # the SAME commit, so the whole predicate reduces to: which PR-attached triggers fire
+          # WITHOUT advancing the head SHA?
+          #   - These three pull_request types each carry a new-or-first SHA, and they are also
+          #     exactly the types GitHub applies when `types:` is omitted — so an omitted types: key
+          #     is safe, which is what keeps this rule from flagging nearly every PR workflow.
+          #   - Every OTHER pull_request type (edited, labeled, unlabeled, ready_for_review,
+          #     converted_to_draft, assigned, review_requested, ...) fires on an unchanged commit.
+          SHA_ADVANCING_PR_TYPES = {"opened", "synchronize", "reopened"}
+          # Whole events that are attached to a PR but never move its head SHA: they fire when a
+          # human or a review bot says something, which can happen any number of times per commit.
+          SHA_STATIC_PR_EVENTS = ("issue_comment", "pull_request_review", "pull_request_review_comment")
+
+          # WAS joint #3 Layer 1 — per-rule severity. Each rule maps to one of THREE forms:
+          #   "enforce"                                   -> ::error:: + fails the build, everywhere.
+          #   "shadow"                                     -> ::notice::WAS-SHADOW + never fails — used
+          #                                                    to MEASURE a candidate rule's fleet
+          #                                                    firing-rate before promotion.
+          #   {"mode": "canary-enforce", "repos": [...]}   -> WAS joint #3 Layer 3-2 (F4 safety-envelope
+          #                                                    #4: shadow->enforce never flips fleet-wide
+          #                                                    in one step). ENFORCE only in the named
+          #                                                    repos; SHADOW everywhere else (still
+          #                                                    measured, never fails outside the named
+          #                                                    set). See _running_repo()/w() below for
+          #                                                    the routing.
+          # New rules MUST enter as shadow; the shadow->enforce (or shadow->canary-enforce->enforce)
+          # promotion is gated (scripts/promote-rule.sh) and provenance-checked by the #873 brake
+          # (frameworks/gates/test-workflow-policy.sh) against frameworks/gates/rule-promotions.jsonl.
+          # Rules 1-5 predate the pipeline and are grandfathered enforce (see that ledger).
+          SEVERITY = {
+              "rule1": "enforce",
+              "rule2": "enforce",
+              "rule3": "enforce",
+              "rule4": "enforce",
+              "rule5": "enforce",
+              # rule7 — WAS joint #3 Layer 3-1 (agent-authored candidate, missing-workflow-timeout,
+              # issue #885/#886). SHADOW only: measures fleet firing-rate before any promotion; never
+              # fails a build. Enters shadow per the joint #3 pipeline's own rule (new rules MUST enter
+              # as shadow — see the provenance-ledger check below, which fails closed if this is ever
+              # flipped to "enforce" without a matching frameworks/gates/rule-promotions.jsonl grant).
+              "rule7": "shadow",
+              # rule8 — push+pull_request double-run detector (SHADOW; cost-grounded, wave-rig#174
+              # durable fix). New rule, enters shadow per pipeline rule; see check_fn:rule8 below for
+              # the full predicate + why enforce/canary is deferred.
+              "rule8": "shadow",
+              # rule9 — cancelled-check-run debris (SHADOW; issue #1020). wave-foundation's own three
+              # hits are FIXED in the same PR that adds this rule, so the rule lands green here and
+              # exists to stop the class coming back. New rule, enters shadow per the pipeline rule:
+              # cancel-in-progress is widespread (56 of this repo's 76 workflows) and the predicate
+              # has never been measured outside this repo, so the fleet firing-rate is unknown — that
+              # measurement is exactly what shadow is for.
+              "rule9": "shadow",
+          }
+          enforce_violations = 0
+          shadow_violations = 0
+          def _running_repo():
+              # GITHUB_REPOSITORY is "owner/repo" (set by Actions runners). Return just the repo name,
+              # or None if unset/malformed (local run, or a caller stripped it) — NEVER guess: an
+              # unknown running repo must default to shadow so a canary-enforce rule can't
+              # accidentally enforce somewhere it wasn't explicitly named (F4 safety-envelope #4).
+              v = os.environ.get("GITHUB_REPOSITORY", "")
+              if "/" not in v:
+                  return None
+              owner, _, name = v.partition("/")
+              return name or None
+          RUNNING_REPO = _running_repo()
+          def _safe(x):
+              # WAS is a reusable workflow that runs on the CALLER's checkout, so any value read
+              # from the caller's YAML (job names, runs-on labels, file paths, etc.) is untrusted
+              # and yaml.safe_load will happily load a malicious value like "build\n::error:: spoofed".
+              # Strip CR/LF (can't span lines) and break the "::" command-prefix (can't forge a
+              # workflow command) before interpolating into a ::-prefixed annotation line
+              # (untrusted-CI-log-steering — F4 finding on PR #889, issue #890).
+              return str(x).replace("\r", " ").replace("\n", " ").replace("::", ":​:")
+
+          def _default_branch():
+              # rule8's merge-target base, derived (never hardcoded — no-hardcoded-branch-names): the
+              # same git-derived signal the "voice" job already computes in shell (git remote show
+              # origin's "HEAD branch:" line), via the plumbing equivalent so it stays inside this one
+              # python heredoc. Degrades safely to "main" with no configured remote (e.g. a fixture run
+              # in an isolated tmp dir during self-test).
+              try:
+                  out = subprocess.run(["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+                                        capture_output=True, text=True, timeout=5)
+                  if out.returncode == 0 and out.stdout.strip():
+                      return out.stdout.strip().rsplit("/", 1)[-1]
+              except Exception:
+                  pass
+              return "main"
+
+          def _merge_targets():
+              # rule8's CONFIGURABLE allowlist: default branch PLUS an optional per-repo file,
+              # ".github/.was-merge-targets" (one branch name per line; blank lines and '#' comments
+              # ignored) — same plain-text-list convention as .github/.filesize-allowlist. Absent file
+              # => merge targets are just the default branch; no config required to adopt rule8.
+              targets = {_default_branch()}
+              try:
+                  with open(".github/.was-merge-targets") as f:
+                      targets |= {ln.strip() for ln in f if ln.strip() and not ln.strip().startswith("#")}
+              except FileNotFoundError:
+                  pass
+              return targets
+
+          MERGE_TARGETS = _merge_targets()
+
+          def _push_scoped_to_merge_targets_only(push):
+              # rule8 predicate helper: True ONLY when `push:` is an inclusion list of LITERAL branch
+              # names that are ALL merge-target branches. Every other shape is non-exculpatory per the
+              # WAS rule8 design — branches-ignore:, any glob (*, **, feature/*), an absent branches:
+              # key (bare `push:`, or a push dict with only tags:/paths:), and a paths: filter all
+              # still count as a violation (see the header comment on rule8's check_fn block below).
+              if not isinstance(push, dict):
+                  return False  # bare `push:` (None) — fires on every branch
+              branches = push.get("branches")
+              if not isinstance(branches, list) or not branches:
+                  return False  # no branches: key (branches-ignore/tags-only/paths-only) or empty list
+              for b in branches:
+                  s = str(b)
+                  if "*" in s or s not in MERGE_TARGETS:
+                      return False
+              return True
+
+          def w(rule_id, msg):
+              global enforce_violations, shadow_violations
+              # Unknown id defaults to shadow — a rule can never auto-enforce without an explicit
+              # SEVERITY entry (fail-safe; the brake independently asserts every calling id is mapped).
+              sev = SEVERITY.get(rule_id, "shadow")
+              if isinstance(sev, dict) and sev.get("mode") == "canary-enforce":
+                  # Layer 3-2 canary-enforce: ENFORCE only in the named repos, SHADOW elsewhere
+                  # (including when the running repo is unknown — safety default, never enforce blind).
+                  enforce_here = RUNNING_REPO is not None and RUNNING_REPO in set(sev.get("repos") or [])
+              else:
+                  enforce_here = sev == "enforce"
+              if enforce_here:
+                  enforce_violations += 1
+                  # rule=<id> tag (WAS joint #3 Layer 3-3, adaptive-immunity tripwire) mirrors the
+                  # shadow branch's tagging below so census-side telemetry (wave-rig
+                  # was-shadow-telemetry.mjs) can tally fleet-wide ENFORCE firings per rule the same
+                  # way it already tallies shadow firings — the input the post-promote tripwire
+                  # needs to compute each enforce rule's fleet failure-rate. Purely additive to the
+                  # message text; still a ::error:: annotation, still fails the build identically.
+                  print(f"::error::WAS-ENFORCE rule={rule_id} :: {msg}")
+              else:
+                  shadow_violations += 1
+                  # Developer-facing signal ONLY. Fleet-wide shadow measurement is census-side
+                  # (wave-rig #175 runs this lint over every repo), NOT scraped from CI runs — a
+                  # dormant repo never runs CI, so CI-scraping would be sampling-biased. [F1]
+                  print(f"::notice::WAS-SHADOW rule={rule_id} :: {msg}")
+
+          files = sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml"))
+          for path in files:
+              try:
+                  doc = yaml.safe_load(open(path))
+              except Exception as e:
+                  print(f"workflow-policy: {path} unparseable ({e}); skipping")
+                  continue
+              if not isinstance(doc, dict):
+                  continue
+              # YAML 1.1 parses a bare 'on:' key as boolean True
+              on = doc.get("on", doc.get(True, {}))
+              if isinstance(on, str):
+                  on = {on: None}
+              elif isinstance(on, list):
+                  on = {k: None for k in on}
+              if not isinstance(on, dict):
+                  on = {}
+
+              is_reusable = "workflow_call" in on
+              push = on.get("push")
+              is_release = isinstance(push, dict) and "tags" in push
+              has_push = "push" in on
+              has_mg = "merge_group" in on
+              has_schedule = "schedule" in on
+              has_pr = "pull_request" in on or "pull_request_target" in on
+              conc = doc.get("concurrency")
+
+              # Rule 1 — concurrency-present (per-commit / scheduled; reusable + release exempt)
+              if not is_reusable and not is_release and (has_pr or has_schedule) and conc is None:
+                  w("rule1", f"{_safe(path)}: per-commit/scheduled workflow has no 'concurrency:' block "
+                    f"(runaway risk — WAS per-commit/scheduled)")
+
+              # Rule 2 — reusable must NOT declare cancel-in-progress:true concurrency (caller owns it);
+              # cancel-in-progress:false is safe (does not cancel across callers).
+              if is_reusable and isinstance(conc, dict) and conc.get("cancel-in-progress") is True:
+                  w("rule2", f"{_safe(path)}: reusable (workflow_call) declares 'concurrency:' with "
+                    f"cancel-in-progress:true — a cancel here fires across all callers (WAS reusable)")
+
+              # Rule 3 — push + merge_group must exclude gh-readonly-queue/** (self-eviction #852)
+              if has_push and has_mg:
+                  if push is None or (isinstance(push, dict) and "branches" not in push and "branches-ignore" not in push):
+                      ok = False  # unfiltered push fires on the queue branch
+                  elif isinstance(push, dict):
+                      br = push.get("branches"); bi = push.get("branches-ignore")
+                      if br is not None:
+                          ok = not any("gh-readonly-queue" in str(x) for x in (br or []))
+                      else:
+                          ok = any("gh-readonly-queue" in str(x) for x in (bi or []))
+                  else:
+                      ok = True
+                  if not ok:
+                      w("rule3", f"{_safe(path)}: has both push: and merge_group: but push doesn't exclude "
+                        f"'gh-readonly-queue/**' (queue self-eviction risk #852 — WAS per-commit)")
+
+              # Rule 4 — release (push:tags) with concurrency ⇒ cancel-in-progress: false
+              if is_release and isinstance(conc, dict) and conc.get("cancel-in-progress") is True:
+                  w("rule4", f"{_safe(path)}: release/publish (push:tags) sets cancel-in-progress:true — "
+                    f"never interrupt an in-flight publish (WAS release)")
+
+              # Rule 5 — runner allowlist (ubuntu-latest or a Blacksmith ubuntu label; self-hosted ok;
+              # skip matrix exprs)
+              for jn, job in (doc.get("jobs") or {}).items():
+                  if not isinstance(job, dict):
+                      continue
+                  ro = job.get("runs-on")
+                  if ro is None:
+                      continue
+                  labels = ro if isinstance(ro, list) else [ro]
+                  if any("self-hosted" in str(l) for l in labels):
+                      continue
+                  if any("{{" in str(l) for l in labels):
+                      continue  # can't resolve matrix/expression statically
+                  if any(str(l) in ALLOWED_RUNNERS for l in labels):
+                      continue
+                  if any(BLACKSMITH_RUNNER_RE.match(str(l)) for l in labels):
+                      continue
+                  if any(BLACKSMITH_MACOS_RUNNER_RE.match(str(l)) for l in labels):
+                      continue
+                  if any(DEPOT_UBUNTU_RUNNER_RE.match(str(l)) for l in labels):
+                      continue
+                  if any(DEPOT_MACOS_RUNNER_RE.match(str(l)) for l in labels):
+                      continue
+                  w("rule5", f"{_safe(path)} [{_safe(jn)}]: runs-on '{_safe(ro)}' not in allowlist — "
+                    f"ubuntu-<latest|24.04|22.04> or blacksmith-<n>vcpu-ubuntu-<2204|2404>[-arm] or depot-ubuntu-<latest|22.04|24.04> is the default; "
+                    f"blacksmith-<6|12>vcpu-macos-<latest|26|15> or depot-macos-<latest|26|15|14> for work that genuinely needs macOS; "
+                    f"a paid/large runner needs measured justification (WAS runner rule)")
+
+              # check_fn:rule7 begin
+              # Rule 7 (SHADOW, agent-authored — WAS joint #3 Layer 3-1, failure_class
+              # missing-workflow-timeout, issue #885). A job with no 'timeout-minutes:' can hold a
+              # runner for HOURS on a hung step with no upper bound — a real runaway-minute / cost
+              # risk, distinct from rule1's concurrency gap (concurrency bounds PARALLEL runs; this
+              # bounds a single run's DURATION).
+              # author-confidence: 90 — mechanical job-iteration check (parse each job dict, look up
+              # one key) mirroring rule5's existing "for jn, job in jobs.items()" idiom line-for-line;
+              # the only real judgment call is the `uses:` exemption below, which is a documented
+              # GitHub Actions platform constraint (verified), not a guess.
+              #   - Reusable-workflow-CALL jobs (`uses: org/repo/.github/workflows/x.yml@ref`) are
+              #     EXEMPT: GitHub Actions does not accept `timeout-minutes` on a job whose body is a
+              #     `uses:` call to another workflow — the bound has to live inside the CALLED
+              #     workflow's own jobs, which this same lint already covers when it scans THAT
+              #     workflow's file (every workflow_call target still lives under
+              #     .github/workflows/*.yml and gets its own pass through this loop).
+              #   - Matrix jobs need no special-casing: `timeout-minutes` at the job level already
+              #     applies uniformly to every matrix leg, so the same job.get() check is correct as-is.
+              #   - No workflow-level (as opposed to job-level) timeout exists in the Actions schema,
+              #     so "the workflow lacks a timeout" always cashes out as "some job in it lacks one" —
+              #     which is exactly what this loop flags, one message per offending job.
+              for jn, job in (doc.get("jobs") or {}).items():
+                  if not isinstance(job, dict):
+                      continue
+                  if "uses" in job:
+                      continue  # reusable-workflow-call job — timeout-minutes isn't a valid field here
+                  if job.get("timeout-minutes") is None:
+                      # jn (and path) are caller-controlled (untrusted): WAS is a reusable workflow
+                      # that runs on the CALLER's checkout, and yaml.safe_load will happily load a
+                      # malicious job key like "build\n::error:: spoofed" — routed through the shared
+                      # _safe() sanitizer (untrusted-CI-log-steering — F4 finding on PR #889, #890).
+                      w("rule7", f"{_safe(path)} [{_safe(jn)}]: job has no 'timeout-minutes:' — an unbounded job can "
+                        f"hold a runner for hours on a hung step (WAS runaway-cost rule, "
+                        f"missing-workflow-timeout, agent-authored pending F4 review)")
+              # check_fn:rule7 end
+
+              # check_fn:rule8 begin
+              # Rule 8 (SHADOW, agent-authored — cost-grounded fleet-wide push+PR double-run,
+              # wave-rig#174 durable fix). A workflow with BOTH a pull_request(_target) trigger AND
+              # a push trigger runs TWICE for the same commit unless the push is scoped to ONLY the
+              # repo's merge-target branch(es) (a legit post-merge gate, e.g. a post-merge deploy).
+              # Merge targets = the repo default branch (git-derived, _default_branch() above) PLUS
+              # an optional per-repo ".github/.was-merge-targets" allowlist (CONFIGURABLE, never
+              # hardcoded — see _merge_targets() above).
+              #
+              # NON-EXCULPATORY (still a violation): branches-ignore:, any glob (*, **, feature/*),
+              # an absent branches: key (bare `push:`, or push scoped only by tags:/paths:), and a
+              # paths: filter — paths narrow WHICH commits fire, they don't dedupe a commit that
+              # already matches both triggers. Only an explicit `branches:` inclusion list whose
+              # every entry is a LITERAL merge-target branch name is exculpatory (e.g.
+              # `push: {branches: [main]}` where main is the sole merge target — a legit post-merge
+              # gate, not a violation).
+              #
+              # SHADOW ONLY, enforce/canary DEFERRED (rule8 is a purely static trigger-shape flag):
+              # it can false-positive when (a) the merge-target branch is ALSO a PR head (e.g. a bot
+              # opens a PR FROM main), or (b) the workflow is already deduped at the job level via
+              # `if:` conditions or `concurrency: { cancel-in-progress: true }` that stop the second
+              # run from doing real work. Both require joining this static trigger-shape signal with
+              # actual RUN-EVENT data (which trigger fired, whether the job body executed) before a
+              # promotion to enforce/canary-enforce can be justified — that join is a documented
+              # follow-up, not yet built. Until then this only MEASURES fleet firing-rate (mirrors
+              # rule7's census-side model — wave-rig #175 runs this lint over every repo).
+              if has_pr and has_push and not _push_scoped_to_merge_targets_only(push):
+                  w("rule8", f"{_safe(path)}: has both pull_request(_target): and push: triggers "
+                    f"and push isn't scoped to ONLY merge-target branch(es) "
+                    f"{_safe(sorted(MERGE_TARGETS))} — a single commit can fire this workflow "
+                    f"TWICE (fleet-wide push+PR double-run cost — wave-rig#174)")
+              # check_fn:rule8 end
+
+              # check_fn:rule9 begin
+              # Rule 9 (SHADOW, agent-authored — cancelled-check-run debris, issue #1020).
+              # `cancel-in-progress: true` is harmless when every re-fire carries a NEW head SHA: the
+              # loser's `cancelled` check-run stays pinned to the OLD commit, which nobody is merging.
+              # It becomes a merge-blocker when a workflow can fire TWICE FOR ONE COMMIT, because then
+              # the `cancelled` check-run is pinned to the commit you ARE merging, and a check-run
+              # never clears. Measured on wave-foundation PR #1042: six `Validate PR Title` runs in 34
+              # seconds, all on head 8ec8861 — five cancelled. GitHub itself is fine with that
+              # (required-context evaluation takes the latest, so mergeStateStatus reads CLEAN), but
+              # anything asking "are there red checks on this commit?" counts `cancelled` as not-green
+              # — correctly, because it cannot tell a supersede from a genuine abort — so the local
+              # merge-premise guard refused the merge until a human reran the dead run by hand.
+              #
+              # The trap worth naming: narrowing the concurrency `group:` does NOT fix this. All six
+              # runs share one head SHA, so putting the SHA in the group leaves them in the SAME
+              # group, still cancelling each other. Only `cancel-in-progress: false` fixes it — and
+              # the group can stay, so re-fires still serialise instead of racing.
+              #
+              # An EXPRESSION-valued cancel-in-progress — governance-enforce.yml uses one keyed on
+              # github.event_name — is treated as capable of being true: it cannot be resolved
+              # statically, and assuming false is the fail-open direction. (Written without the
+              # literal expression delimiters on purpose: actionlint lexes those inside a run: block,
+              # and one spanning a comment's line break is an "unexpected character '#'" parse error.)
+              # author-confidence: 85 — the predicate is a closed enumeration over documented Actions
+              # event types rather than a heuristic, and each of this repo's three hits was confirmed
+              # against live check-run data BEFORE the rule was written (two were already costing a
+              # manual rerun per PR; the third, auto-approve.yml, was latent because that workflow is
+              # dormant unless AUTO_APPROVE_ENABLED == '1'). The residual it does NOT model: a
+              # close/reopen fast enough to cancel an in-flight run at an unchanged SHA. `reopened`
+              # is in the safe set because it is also a DEFAULT type, and flagging the defaults would
+              # flag nearly every PR workflow — a gate that cries wolf is one people learn to skip.
+              cip = conc.get("cancel-in-progress") if isinstance(conc, dict) else None
+              if cip is not None and cip is not False:
+                  same_sha_triggers = [ev for ev in SHA_STATIC_PR_EVENTS if ev in on]
+                  for ev in ("pull_request", "pull_request_target"):
+                      spec = on.get(ev)
+                      types = spec.get("types") if isinstance(spec, dict) else None
+                      if types is None:
+                          continue  # omitted types: == the safe default set, so nothing to flag
+                      extra = sorted({str(t) for t in types} - SHA_ADVANCING_PR_TYPES)
+                      if extra:
+                          same_sha_triggers.append(f"{ev}:{','.join(extra)}")
+                  if same_sha_triggers:
+                      # path and the trigger names are caller-controlled (WAS lints the CALLER's
+                      # checkout), so both go through _safe() — same untrusted-log-steering guard
+                      # rules 5/7/8 use (#890).
+                      w("rule9", f"{_safe(path)}: cancel-in-progress is enabled and "
+                        f"{_safe(', '.join(same_sha_triggers))} can fire twice for the SAME head SHA "
+                        f"— the cancelled run leaves a 'cancelled' check-run pinned to the commit "
+                        f"being merged, it never clears, and every merge guard reads it as red. Set "
+                        f"cancel-in-progress: false; narrowing the group: does NOT help (#1020)")
+              # check_fn:rule9 end
+
+          print(f"workflow-policy: scanned {len(files)} workflow file(s), "
+                f"{enforce_violations} enforce violation(s), {shadow_violations} shadow firing(s)")
+          # Only enforce violations fail the build; shadow firings are measured, never blocking.
+          sys.exit(1 if enforce_violations else 0)
+          PY
+  claude-config:
+    if: ${{ inputs.enforce_claude_config }}   # staged rollout — opt-in until a repo's .claude/ is scrubbed clean
+    # Full-tree governance for project-level `.claude/` agent config (config-governed-like-prod LAW):
+    # forces committed agent config to ZERO hardcoded home paths + ZERO materialized secrets across the
+    # WHOLE tracked `.claude/**` tree. This is the gap the other two gates leave: the whole-repo Secret
+    # scan (above) has no path rule, and @wave-av/governance (governance-enforce.yml) checks paths only on
+    # the DIFF (it grandfathers legacy debt). No-op in a repo with no tracked `.claude/`. Inlined so
+    # consumers need nothing from this repo — mirrors wave-foundation/scripts/check-claude-config.sh; keep
+    # the two in sync.
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true # same v7 sparse-checkout re-fetch requirement for PRIVATE consumer repos
+      - name: Governed .claude/ config gate (full-tree, fail-closed)
+        run: |
+          # Secret matches are REDACTED (line numbers only) so this log can never leak a credential.
+          ALLOW=".github/.claude-governance-allow"   # exact tracked paths to exempt; fail-OPEN if absent
+          SECRET_RE='(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|ghp_[A-Za-z0-9]{30}|gho_[A-Za-z0-9]{30}|ghs_[A-Za-z0-9]{30}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|re_[A-Za-z0-9_]{20}|-----BEGIN [A-Z ]*PRIVATE KEY)'
+          PATH_RE='(/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/)'   # use $HOME / ~ (no-hardcoded-paths LAW)
+          allowed() { [ -f "$ALLOW" ] && grep -qxF "$1" "$ALLOW" 2>/dev/null; }
+          fail=0; scanned=0
+          # Content rules (a)+(b) for one file; shared with the directory-symlink traversal below.
+          scan_contents() {
+            sl=$(grep -nIE "$SECRET_RE" -- "$1" 2>/dev/null | cut -d: -f1 | paste -sd, - || true)
+            if [ -n "$sl" ]; then echo "::error::claude-config: $1 — secret-like credential at line(s) $sl (REDACTED); never materialize a secret in agent config (config-governed-like-prod LAW)."; fail=1; fi
+            ph=$(grep -nIE "$PATH_RE" -- "$1" 2>/dev/null | sed -E "s/$SECRET_RE/[REDACTED-SECRET]/g" || true)  # mask any secret on a dual-match line
+            if [ -n "$ph" ]; then echo "::error::claude-config: $1 — hardcoded absolute home path (use \$HOME or ~):"; printf '%s\n' "$ph" | sed 's/^/    /'; fail=1; fi
+          }
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate for the class.
+          # This gate is the one that most needs it: a failed lister here reported "clean, 0 secrets,
+          # 0 hardcoded paths" over ZERO scanned files, which is the exact string a genuinely clean
+          # repo prints. NUL-delimited, so it goes through a file rather than a variable.
+          # Symlink handling follows links; a link may not read ANYTHING outside the worktree.
+          # Two-step on purpose: `cd "$(git rev-parse ...)"` could never trip its own guard —
+          # a failed rev-parse expands to "", `cd ""` succeeds without moving, and repo_root
+          # silently became the current directory. Check the rev-parse result before cd-ing.
+          repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+          if [ -z "$repo_root" ] || ! repo_root="$(cd "$repo_root" && pwd -P)"; then
+            echo "::error::claude-config: cannot resolve the repository root; refusing to run an unbounded scan."
+            exit 1
+          fi
+          list=$(mktemp); walk=$(mktemp -d); visited="$walk/visited"; trap 'rm -f "$list"; rm -rf "$walk"' EXIT
+          if ! git ls-files -z >"$list"; then
+            echo "::error::claude-config gate: git ls-files FAILED — refusing to report a pass. The gate scanned NOTHING; treat this as a blocked check, not a green one."
+            exit 1
+          fi
+          # Physical resolution for the containment compares. `readlink -f` is GNU-flavoured; on a
+          # readlink without `-f` (BSD/macOS local runs of the mirrored script) an empty resolution
+          # read as "outside the repository" and hard-failed a clean tree. Fall back to python3's
+          # realpath, and return NON-ZERO when neither works: "cannot resolve" reports as
+          # unverifiable (blocked), never as the misleading "resolves OUTSIDE".
+          resolve_physical() { # $1=existing path -> physical absolute path; non-zero = unresolvable
+            local r
+            if r="$(readlink -f -- "$1" 2>/dev/null)" && [ -n "$r" ]; then printf '%s\n' "$r"; return 0; fi
+            python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null
+          }
+          # Directory-symlink traversal, PRUNED AT THE BOUNDARY: the old full-tree `find -L`
+          # followed NESTED links before the per-entry containment compare, so an escaping link
+          # had its whole outside tree walked (unbounded) and the violation line's tail named the
+          # outside file the message claimed to redact. Descend one level at a time and
+          # containment-check every entry BEFORE descending; still fail-closed (an unlistable
+          # directory or unresolvable entry is a violation, never clean), same vendored-dir
+          # prunes, and a visited set on resolved physical paths keeps link cycles finite.
+          walk_id=0
+          walk_dir() { # $1=directory reached through the tracked link (containment already verified)
+                       # $2=$1's resolved physical path (the caller already resolved it)
+            local dir="$1" rdir="$2" entries sub tgt rsub rel
+            walk_id=$((walk_id + 1))
+            entries="$walk/entries.$walk_id"
+            # -H (not -L): follow $dir itself when it is a link, but list nested links AS links
+            # so find's loop detector never fires on a benign cycle; the visited set cuts those.
+            if ! find -H "$dir" -mindepth 1 -maxdepth 1 -print0 >"$entries" 2>/dev/null; then
+              echo "::error::claude-config: $dir: cannot fully traverse the directory symlink target (unreadable entry). Refusing to report clean over an unscanned tree (config-governed-like-prod LAW)."
+              fail=1
+              return 0
+            fi
+            while IFS= read -r -d '' sub; do
+              case "$sub" in */.git|*/node_modules|*/dist) continue ;; esac
+              # Dangling links reached through the redirect: target STRING gets the same two
+              # rules as a top-level dangling link, then there is nothing more to read.
+              # Exemptions FIRST, like the top-level loop: derive the repo-relative path from
+              # the PARENT's resolved path + basename (the link itself cannot be resolved), so
+              # a broken link inside vendored/approved material keeps its escape hatch. Strip
+              # the root WITHOUT its trailing slash, then the leading one: when the redirect
+              # resolves to the repo root itself, rdir IS $repo_root and the slashed pattern
+              # strips nothing, leaving an absolute rel no exemption spelling could match.
+              if [ -L "$sub" ] && [ ! -e "$sub" ]; then
+                rel="${rdir#"$repo_root"}/${sub##*/}"; rel="${rel#/}"
+                case "$rel" in staging/*) continue ;; esac
+                allowed "$rel" && continue
+                scanned=$((scanned + 1))
+                tgt=$(readlink -- "$sub" 2>/dev/null || true)
+                if printf '%s\n' "$tgt" | grep -qE "$SECRET_RE"; then echo "::error::claude-config: $sub — symlink target contains a secret-like credential (REDACTED); never materialize a secret in agent config (config-governed-like-prod LAW)."; fail=1; fi
+                if printf '%s\n' "$tgt" | grep -qE "$PATH_RE"; then echo "::error::claude-config: $sub — symlink target is a hardcoded absolute home path (use \$HOME or ~): $(printf '%s\n' "$tgt" | sed -E "s/$SECRET_RE/[REDACTED-SECRET]/g")"; fail=1; fi
+                continue
+              fi
+              # Containment BEFORE descent: refuse an out-of-worktree resolution at the boundary
+              # so the outside tree is never walked and only the in-repo link path is printed.
+              if ! rsub="$(resolve_physical "$sub")"; then
+                echo "::error::claude-config: $sub: cannot resolve physically (readlink lacks -f and python3 is unavailable). The containment check is unverifiable; refusing to report clean over an unverified link (config-governed-like-prod LAW)."
+                fail=1
+                continue
+              fi
+              case "$rsub/" in
+                "$repo_root/"*) ;;
+                *) echo "::error::claude-config: $sub: reachable through a directory symlink but resolves OUTSIDE the repository (target REDACTED). Refusing to descend past the worktree boundary."; fail=1; continue ;;
+              esac
+              if [ -d "$sub" ]; then
+                grep -qxF "$rsub" "$visited" 2>/dev/null && continue   # link cycle or diamond: already walked
+                printf '%s\n' "$rsub" >>"$visited"
+                walk_dir "$sub" "$rsub"
+                continue
+              fi
+              [ -f "$sub" ] || continue
+              # Exemptions apply here too, matched on the REPO-RELATIVE RESOLVED path (the
+              # real file's tracked spelling — what $ALLOW expects), never the link-relative
+              # path the traversal prints, which the allowlist could never name.
+              rel="${rsub#"$repo_root"/}"
+              case "$rel" in staging/*) continue ;; esac
+              allowed "$rel" && continue
+              scanned=$((scanned + 1)); scan_contents "$sub"
+            done <"$entries"
+            return 0
+          }
+          while IFS= read -r -d '' f; do
+            # Slash-less alternatives: a tracked path that IS `.claude` can only be a symlink
+            # (the whole agent-config dir replaced by a link) — it must reach the symlink branch.
+            case "$f" in .claude|.claude/*|*/.claude|*/.claude/*) ;; *) continue ;; esac
+            case "$f" in staging/*) continue ;; esac   # vendored/harvested external material — exempt by PATH
+            allowed "$f" && continue
+            # Symlinks: `-f` FOLLOWS links, so a dangling symlink (target under an absolute home
+            # dir) was skipped entirely — fail-open. Scan the target STRING with both rules, then
+            # ALSO scan the resolved contents when the link resolves.
+            if [ -L "$f" ]; then
+              scanned=$((scanned + 1))
+              tgt=$(readlink -- "$f" 2>/dev/null || true)
+              if printf '%s\n' "$tgt" | grep -qE "$SECRET_RE"; then echo "::error::claude-config: $f — symlink target contains a secret-like credential (REDACTED); never materialize a secret in agent config (config-governed-like-prod LAW)."; fail=1; fi
+              if printf '%s\n' "$tgt" | grep -qE "$PATH_RE"; then echo "::error::claude-config: $f — symlink target is a hardcoded absolute home path (use \$HOME or ~): $(printf '%s\n' "$tgt" | sed -E "s/$SECRET_RE/[REDACTED-SECRET]/g")"; fail=1; fi
+              # CONTAINMENT: a resolvable link must land inside the worktree; outside it, the
+              # gate must not read (let alone print lines from) the target. The finding is the
+              # escape itself, reported with the target REDACTED.
+              if [ -e "$f" ]; then
+                if ! resolved="$(resolve_physical "$f")"; then
+                  echo "::error::claude-config: $f: cannot resolve the symlink physically (readlink lacks -f and python3 is unavailable). The containment check is unverifiable; refusing to report clean over an unverified link (config-governed-like-prod LAW)."
+                  fail=1
+                  continue
+                fi
+                case "$resolved/" in
+                  "$repo_root/"*) ;;
+                  *) echo "::error::claude-config: $f: symlink resolves OUTSIDE the repository (target REDACTED). Agent config must not reach through the worktree boundary (config-governed-like-prod LAW)."; fail=1; continue ;;
+                esac
+              fi
+              # A link resolving to a DIRECTORY relocates governed config to paths the scope
+              # filter never visits. Scan every file reachable through it (a benign in-repo
+              # dedupe stays legal if clean) via walk_dir (above), which containment-checks
+              # every entry BEFORE descending so a nested out-of-worktree link is refused at
+              # the boundary and the outside tree is never walked or named. Seed the visited
+              # set with this link's own resolution so a cycle back to it terminates
+              # ($resolved is set: -d implies -e, so the containment block resolved it).
+              if [ -d "$f" ]; then
+                printf '%s\n' "$resolved" >"$visited"
+                walk_dir "$f" "$resolved"
+                continue
+              fi
+              # A resolvable link still exposes its target's CONTENTS — fall through to the
+              # content scan (grep follows the link); only a DANGLING link stops here. The
+              # exemptions apply to a FILE link's resolved target too, matched on its
+              # repo-relative resolved path, same as the directory traversal above.
+              [ -f "$f" ] || continue
+              rel="${resolved#"$repo_root"/}"
+              case "$rel" in staging/*) continue ;; esac
+              allowed "$rel" && continue
+            elif [ -f "$f" ]; then
+              scanned=$((scanned + 1))
+            else
+              continue
+            fi
+            scan_contents "$f"
+          done <"$list"
+          if [ "$fail" = 0 ]; then echo "claude-config gate: clean ($scanned tracked .claude/ file(s); 0 secrets, 0 hardcoded paths)"; fi
           exit "$fail"
   skill-validate:
     # Validates SKILL.md frontmatter in the CALLING repo. Auto-discovers any *SKILL.md; no-op if
     # the repo has none. Inlined (not a shared script) so consumers need nothing from this repo —
     # mirrors wave-foundation/scripts/validate-skills.py; keep the two in sync.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - run: pip install pyyaml
@@ -113,12 +1165,12 @@ jobs:
     # commit time. No-op (not a failure) if the repo hasn't vendored it yet. BLOCKING as of 2026-06-04 —
     # flipped from advisory after a clean soak (all 18 active spokes green on this gate). A repo that
     # hasn't vendored the linter still no-ops; one that vendored it must keep a valid Opus-4.x request shape.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - name: Claude-API request-shape gate (vendored script)
         run: |
           LINT=.foundation/frameworks/claude-api/lint-request-shape.sh
@@ -139,12 +1191,12 @@ jobs:
     # .foundation/frameworks/claude-api/lint-cache-control.sh — the same script devs hit at commit time.
     # No-op if not vendored yet. BLOCKING as of 2026-06-04 — flipped from advisory after a clean soak
     # (all 18 active spokes green). Every vendored Claude request with a system prefix must cache it.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - name: Claude-API prompt-caching gate (vendored script)
         run: |
           LINT=.foundation/frameworks/claude-api/lint-cache-control.sh
@@ -161,12 +1213,12 @@ jobs:
     # banned patterns: *-edge.wave.online, *.production.wave.online, wave-*.wave.online,
     # *-staging.wave.online (use sub-subdomain instead). Worker-only fallbacks (*.workers.dev) are
     # ALLOWED with a warning so dev/preview routes don't trip the gate.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - name: URL convention gate
         # Reads only file paths from `git ls-files` (repo-controlled, trusted) and host strings
         # extracted via a CONSTRAINED regex from wrangler.toml (PR-controlled). The regex
@@ -178,6 +1230,16 @@ jobs:
         run: |
           fail=0
           any=0
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate for the class. A
+          # failed lister here printed "no wrangler.toml — verify-routes is a no-op" and exited 0,
+          # which is also what a repo that genuinely has no wrangler.toml prints. The INNER loop's
+          # `grep -oE` is a FILTER over a known-existing file (exit 1 = "this toml has no
+          # wave.online URL", legitimate), so it is deliberately left alone.
+          list=$(mktemp); trap 'rm -f "$list"' EXIT
+          if ! git ls-files -- '*wrangler.toml' 'wrangler*.toml' >"$list"; then
+            echo "::error::verify-routes: git ls-files FAILED — refusing to report a no-op. The gate scanned NOTHING; treat this as a blocked check, not a green one."
+            exit 1
+          fi
           while IFS= read -r f; do
             any=1
             # Extract host portion (everything before the first /) from `pattern = "host/..."` lines.
@@ -203,49 +1265,276 @@ jobs:
                   echo "::warning file=$f::URL $h unrecognized — verify against docs/conventions/url-naming.md" ;;
               esac
             done < <(grep -oE '"[a-zA-Z0-9._-]+\.wave\.online[^"]*"' "$f" 2>/dev/null | tr -d '"' | cut -d/ -f1 | sort -u)
-          done < <(git ls-files '*wrangler.toml' 'wrangler*.toml')
+          done <"$list"
           if [ "$any" = 0 ]; then echo "no wrangler.toml — verify-routes is a no-op"; exit 0; fi
           if [ "$fail" = 0 ]; then echo "verify-routes passed"; fi
           exit "$fail"
 
   voice:
     # WAVE voice gate (frameworks/copywriting/voice-and-tone.md §human⇄agent taxonomy): user-facing
-    # marketing/docs copy says "people" / second person, NOT "humans" (othering). Scans only the
-    # user-facing files CHANGED in this PR (.ts/.tsx/.md/.mdx, excluding tests), so it gates NEW copy
-    # and never retroactively fails unswept files. ALLOWED: the "no human in the loop" idiom; the GDPR
+    # marketing/docs copy says "people" / second person, NOT "humans" (othering). Scans only the lines
+    # ADDED by this PR, in user-facing files (.ts/.tsx/.md/.mdx, excluding tests), so it gates NEW copy
+    # and never retroactively fails unswept files. That last clause was asserted here long before it was
+    # true: until #1351 the check greped each changed file WHOLE, so pre-existing prose failed whoever
+    # next touched it. The comment was right and the code was wrong — a documented contract is not a
+    # test. ALLOWED: backticked code spans (identifiers quoted from source, e.g. an `async-human` union
+    # member); the "human-in-the-loop" term-of-art (HITL —
+    # an approval STEP, like "human review"; covers the "no human in the loop" autonomy idiom too); the GDPR
     # / EU-AI-Act legal terms "human review"/"human oversight"; "human-readable"; typography words;
     # identifiers/const/id-slugs; and code comments. No `${{ github.* }}` interpolation (shell only).
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
           fetch-depth: 0
       - name: Voice gate (people, not humans)
+        env:
+          # Same base plumbing as the token-budget gate. Passed via `env:` (never `${{ }}` inline in
+          # the shell) so nothing from the event payload is ever interpolated into a command.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # The PR's own head SHA. Used ONLY to recognise GitHub's synthetic merge commit — see the
+          # base derivation below. Passed through `env:` like its siblings rather than interpolated
+          # into the script body, because `${{ }}` inside `run:` is a script-injection sink.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
-          base=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
-          base="origin/${base:-main}"
-          git fetch origin --quiet 2>/dev/null || true
+          # BASE DERIVATION — this used to be a silent fail-open with TWO independent failure modes:
+          #   base=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
+          #   base="origin/${base:-main}"
+          # (1) It is a PIPELINE, so its status is sed's — always 0. A `git remote show origin` that
+          #     failed (it needs the NETWORK) silently yielded the empty string, and the `:-main`
+          #     fallback then pointed at `origin/main` in repos whose default branch is not `main`.
+          # (2) The diff below swallowed the resulting "unknown revision" via `2>/dev/null` inside a
+          #     process substitution, so the gate printed "no changed user-facing files — voice gate
+          #     is a no-op" and exited 0. That is the same string a genuinely no-op PR prints.
+          # Prefer the event's own base SHA (no network, always correct for the PR being gated) and
+          # fall back to the remote query only if it is absent.
+          BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
+          # GITHUB'S SYNTHETIC PR MERGE COMMIT (claude-workstation#1605). actions/checkout resolves
+          # `refs/pull/N/merge` on pull_request events — a merge of the CURRENT base branch into the
+          # PR head — while PR_BASE_SHA is frozen at the base-branch tip from when the event fired.
+          # Diffing that stale base against the merge commit reports every PEER commit merged in
+          # between as ADDED work belonging to THIS pull request. Measured on claude-workstation
+          # #1591: the voice gate failed the PR over a `human` line in a plan doc it never touched,
+          # already on main from someone else's merged work, and named that author's file in the
+          # annotation. It fires precisely when a branch falls behind its base, which on a busy repo
+          # is minutes. The FIRST parent of that merge commit is the base-branch tip GitHub merged,
+          # so it is the only base that yields the pull request's own contribution.
+          #
+          # The `head2 = PR_HEAD_SHA` test is load-bearing and must NEVER be relaxed to "HEAD has two
+          # parents". An AUTHOR who merges the base branch into their own branch produces a head
+          # whose parents mean the OPPOSITE — ^1 is their branch, ^2 is the base — so taking ^1 there
+          # would report the ENTIRE base branch as added: strictly worse than the bug being fixed,
+          # and this exact shape was observed live on #1591 ("Merge remote-tracking branch
+          # 'origin/main' into fix/..."). Only `refs/pull/N/merge` carries the PR head as its SECOND
+          # parent, so that equality is what distinguishes the two, not the parent count.
+          head2="$(git rev-parse -q --verify 'HEAD^2' 2>/dev/null || true)"
+          if [ -n "$PR_HEAD_SHA" ] && [ -n "$head2" ] && [ "$head2" = "$PR_HEAD_SHA" ]; then
+            BASE_REF="$(git rev-parse 'HEAD^1')"
+          fi
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            git fetch origin --quiet || true
+            head_branch=$(git remote show origin | sed -n 's/.*HEAD branch: //p') || head_branch=""
+            if [ -z "$head_branch" ]; then
+              echo "::error::voice gate: could not resolve a diff base (no PR/merge-group/push base SHA, and 'git remote show origin' gave no HEAD branch) — refusing to report a no-op. The gate scanned NOTHING."
+              exit 1
+            fi
+            BASE_REF="origin/$head_branch"
+          fi
+          # Narrow to the merge-base and diff TWO-DOT, exactly as the token-budget gate does (#930).
+          mb="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"
+          base="${mb:-$BASE_REF}"
+          # Head as well as base — see the token-budget gate's note; #1605 was undiagnosable without it.
+          echo "voice gate: diffing against $base (HEAD $(git rev-parse HEAD))"
           fail=0; any=0
           is_target() { case "$1" in
             *.test.*|*.spec.*) return 1 ;;
             *frameworks/copywriting/*|*voice-and-tone*) return 1 ;;
+            *CHANGELOG.md) return 1 ;;   # git-cliff-generated from commit history — not authored copy
+            *code-index/CATALOG.md) return 1 ;;   # code-index.mjs-generated code catalog — quotes identifiers (e.g. learning-admit's `human:` producer), not authored copy
+            # claude-workstation#2109. Internal engineering plans are not marketing copy, and this
+            # rule is scoped to marketing copy by its own header. `governance/plans/**` holds
+            # north-star epics and phase documents whose whole job is discussing agents, reviewers
+            # and operators — so "human" there is the PRECISE word, contrasted with crawler/bot, not
+            # a lapse in voice. Measured on claude-workstation #1922 and #1935: both failed on an
+            # added `_Status:` marker line reading "crawler vs human vs allow-listed bot". This is
+            # not a vocabulary gap to patch by extending the ignore list below — that list already
+            # carves out human-in-the-loop / human review / human oversight, i.e. the intent to
+            # exempt technical usage is established; the defect is that the gate is scanning a
+            # surface it was never meant to grade. It will recur ~43 more times as the #1218 marker
+            # retrofit writes dense measurement prose into every remaining epic.
+            # ANCHORED, not `*governance/plans/*`: paths from `git diff --name-status` are
+            # repo-relative, so anchoring means only a REAL top-level governance tree matches. A
+            # leading wildcard would also exempt `marketing/site/governance/plans/`, letting a
+            # customer-facing page opt out of a copy rule by its directory name.
+            # SAME RULING, TWO MORE INTERNAL TREES (claude-workstation#2847): research prose and the
+            # READMEs of internal governance tooling. Measured there — 5 files, ~11 added lines — and
+            # one is a VERBATIM QUOTATION (`Schulman: "human data... hard for a model to fit"`) whose
+            # only in-repo remedy is to falsify it, the outcome the fenced-block carve-out below
+            # exists to prevent. NAMED rather than generalized to `governance/*`, and anchored, for
+            # the reasons the plans entry and the `human[-_]resources` allowlist give. The tools arm
+            # is README-SPECIFIC, matching the ruling above and the measured file set exactly — a
+            # bare `governance/tools/*` would exempt every .ts/.md under the tree, wider than the
+            # evidence (CodeRabbit finding on the PR that added this line).
+            governance/plans/*|governance/research/*|governance/tools/*/README.md) return 1 ;;
             *.tsx|*.ts|*.md|*.mdx) return 0 ;;
             *) return 1 ;;
           esac; }
-          while IFS= read -r f; do
+          # Generated files are NOT authored copy: skip anything that self-declares as generated in
+          # its first 5 lines (same invariant as the token-budget gate's AUTO-GENERATED exemption
+          # above). Catalogs/indexes quote identifiers + third-party plugin descriptions verbatim
+          # (first hits: code-index + capability CATALOG.md, claude-workstation#366) — the marker,
+          # not the path, is the durable signal. Authored marketing never carries "Do not hand-edit".
+          is_generated() { head -5 "$1" 2>/dev/null | grep -qiE 'AUTO-GENERATED|@generated|Generated by|Do not hand-edit'; }
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate for the class.
+          # The `2>/dev/null` that used to sit on this diff is gone: it deleted the one line that
+          # said WHY the gate scanned nothing.
+          # `--name-status` + ACMR, not `--name-only` + ACM: rename detection reports a
+          # moved-and-edited file as R, which ACM EXCLUDED — new prose written in the same commit
+          # as a move was invisible to the gate. The status is needed because a rename's per-file
+          # diff below must carry BOTH paths: pathspec-limiting to the new path alone drops the old
+          # path from the diff's scope, rename pairing never happens, and the whole file reads as
+          # added — resurrecting the #1351 whole-file class for every move. With both paths in
+          # scope, a pure move contributes zero added lines and only the edits are gated.
+          list=$(mktemp); trap 'rm -f "$list"' EXIT
+          if ! git diff --name-status --diff-filter=ACMR "$base" HEAD >"$list"; then
+            echo "::error::voice gate: git diff against '$base' FAILED — refusing to report a no-op. The gate scanned NOTHING; check that the base ref was fetched (fetch-depth: 0)."
+            exit 1
+          fi
+          while IFS=$'\t' read -r st p1 p2; do
+            [ -z "$st" ] && continue
+            case "$st" in
+              R*) f="$p2"; old="$p1" ;;
+              *)  f="$p1"; old="" ;;
+            esac
             [ -z "$f" ] && continue
             [ -f "$f" ] || continue
             is_target "$f" || continue
+            is_generated "$f" && continue
             any=1
-            if grep -niE '\bhumans?\b' "$f" \
-                 | grep -vE '^[0-9]+:[[:space:]]*(//|\*|#|/\*|<!--)' \
-                 | grep -qivE 'no human.?in.?the.?loop|human review|human oversight|human-read|humanis|humaniz|HUMANS?_|_HUMANS?|-humans?-|"human"|\.human\b'; then
-              echo "::error file=$f::'human/humans' in marketing copy — use 'people' or second person (frameworks/copywriting/voice-and-tone.md)"
+            # $f is a PR-controlled filename flowing into ::error `file=` properties below. Encode
+            # it per the workflow-command PROPERTY escaping (which, beyond the %/CR/LF of message
+            # data, also reserves ':' and ','), so a crafted path cannot corrupt the annotation.
+            fsafe=${f//'%'/%25}; fsafe=${fsafe//$'\r'/%0D}; fsafe=${fsafe//$'\n'/%0A}
+            fsafe=${fsafe//:/%3A}; fsafe=${fsafe//,/%2C}
+            # ADDED LINES ONLY. Grepping the whole file attributed pre-existing prose to whoever next
+            # touched it: on claude-workstation#1531 four files failed and THREE had zero occurrences
+            # on any added line (#1351). The two steps below are deliberately separate because their
+            # failure modes are opposite and must not be conflated:
+            #   1. `git diff` failing is a BROKEN GATE -> error + non-zero, never a silent pass.
+            #   2. `grep` finding nothing is the HAPPY PATH -> exit 1 that must not trip `bash -e`.
+            # Collapsing both into one `... || true` pipeline is precisely the fail-open this job's
+            # base-derivation comment above was written about. Do not merge them.
+            dtmp=$(mktemp)
+            # ${old:+"$old"} adds the rename source to the pathspec ONLY when there is one, so
+            # rename pairing survives the pathspec limit (see the enumeration comment above).
+            if ! git diff --unified=0 "$base" HEAD -- ${old:+"$old"} "$f" >"$dtmp"; then
+              rm -f "$dtmp"
+              echo "::error file=$fsafe::voice gate: git diff for this file FAILED — refusing to report a no-op. The gate scanned NOTHING for it."
+              exit 1
+            fi
+            # The `/^@@/,$` range keeps only what follows the FIRST hunk header, where the '+++ b/…'
+            # file header can no longer appear — so a content line that itself starts with '++'
+            # (which the diff renders as '+++<text>', indistinguishable from the header by prefix
+            # alone) survives. The previous `grep -v '^+++'` filter silently discarded that class.
+            # `cut -c2-` then strips only the diff's leading '+' marker column. Backticked code spans are
+            # blanked BEFORE matching, in MARKDOWN ONLY: this job's header has always promised
+            # identifiers are allowed, and `async-human` / `queue-human` are members of a TypeScript
+            # union quoted verbatim from source. Rewording those to satisfy a marketing rule would
+            # falsify the doc. The code span is a markdown construct; in .ts/.tsx a backtick delimits
+            # a TEMPLATE LITERAL, whose contents are frequently real user-facing copy — blanking
+            # there would exempt exactly the strings this rule exists to gate, so source files keep
+            # the raw text. An UNBALANCED backtick strips nothing (the substitution needs a closing
+            # one), and fenced blocks span lines this loop sees singly — both residues fail CLOSED,
+            # which is the safe direction.
+            # shellcheck disable=SC2016  # the backticks are LITERAL markdown code-span delimiters, not
+            # command substitution — single quotes are exactly right and must not become double quotes.
+            case "$f" in *.md|*.mdx) span='s/`[^`]*`/ /g' ;; *) span='' ;; esac
+            # FENCED BLOCKS are exempt in markdown, for the same reason code spans are
+            # (claude-workstation#2744): their contents are QUOTED SOURCE, not authored copy.
+            # Measured on the pre-fix gate, all flagged: `human: true` (yaml key),
+            # `SELECT human FROM actors;`, `type Actor = human | agent;`, `actor=human tier=1`.
+            # A docs PR quoting any of those got a BLOCKING red check whose only in-repo remedy
+            # was to falsify the quotation.
+            #
+            # State is computed over the HEAD FILE, not over the added lines: a PR can add a line
+            # INSIDE a fence it did not open, and added-lines-only tracking reads that line as
+            # top-level prose. That case is covered by a test in the harness cited below.
+            #
+            # UNBALANCED FENCES DISABLE THE EXEMPTION ENTIRELY. An odd delimiter count means the
+            # state machine is desynchronised, and a desynchronised exemption silently excuses
+            # real marketing prose for the whole tail of a file. Exempting nothing keeps the gate
+            # failing CLOSED, which is the direction this step has always chosen.
+            fenced=""
+            case "$f" in *.md|*.mdx)
+              if [ -f "$f" ]; then
+                nf=$(grep -cE '^[[:space:]]{0,3}(```|~~~)' "$f" || true)
+                if [ "$nf" -gt 0 ] && [ $((nf % 2)) -eq 0 ]; then
+                  fenced=$(awk '/^[[:space:]]{0,3}(```|~~~)/ { infence = !infence; print NR; next } infence { print NR }' "$f" | tr '\n' ',')
+                fi
+              fi
+              ;;
+            esac
+            # No `|| true` here: this step runs WITHOUT pipefail, so the pipeline's status is the
+            # final sed's — a mid-pipe grep finding nothing cannot fail it, and a sed failure is a
+            # BROKEN GATE that must surface, not be forgiven.
+            #
+            # `fenced` is COMMA-separated, never newline-separated: `awk -v` cannot carry a newline
+            # in an assignment (it dies with "awk: newline in string"), and that death emitted an
+            # EMPTY added-line set, which the matcher below reads as "no violations" — a silent
+            # fail-OPEN on a copy gate. Caught by the harness before this shipped, which is why the
+            # `if !` guard around the assignment exists: a broken extractor must never read as clean.
+            #
+            # The awk replaces the old `sed -n '/^@@/,$p' | grep '^+' | cut -c2-` and preserves its
+            # one subtle property: the `+++ b/…` header is skipped by only starting after the FIRST
+            # `@@`, NOT by filtering `^+++` — a content line beginning with `++` renders as `+++<text>`
+            # and is indistinguishable from the header by prefix alone.
+            if ! added=$(awk -v fenced="$fenced" '
+                  BEGIN { n = split(fenced, a, ","); for (i = 1; i <= n; i++) if (a[i] != "") skip[a[i] + 0] = 1 }
+                  !seen && /^@@/ { seen = 1 }
+                  !seen { next }
+                  /^@@/ { split($3, h, ","); ln = substr(h[1], 2) + 0; next }
+                  /^\+/ { if (!(ln in skip)) print substr($0, 2); ln++; next }
+                  /^ /  { ln++; next }
+                  { next }
+                ' "$dtmp" | sed "$span"); then
+              echo "::error file=$fsafe::voice gate: added-line extraction FAILED for this file — refusing to report a no-op. The gate scanned NOTHING for it."
+              rm -f "$dtmp"
+              exit 1
+            fi
+            rm -f "$dtmp"
+            # `|| [ $? -eq 1 ]`, NOT `|| true`: the final grep exits 1 when everything was filtered
+            # out, which is the HAPPY PATH and must not trip `bash -e` — but exit >1 is grep itself
+            # failing, a broken gate this now propagates instead of forgiving. A blanket `|| true`
+            # is the forced-success pattern gates in this repo are forbidden from carrying.
+            # human[-_]resources is an ENUMERATED IDENTIFIER, not a pattern: a hyphen alone cannot
+            # distinguish an identifier (human-resources, a plugin-category name) from a compound
+            # ADJECTIVE (human-centered, human-first, human-scale — exactly the prose this gate
+            # exists to catch). A general "human followed by -/_ " arm let all three of those
+            # through silently (measured: this PR's own review) — that false negative is more
+            # expensive on a copy gate than the false positive it was chasing, so widen the
+            # allowlist by naming the specific known identifier rather than by generalizing the
+            # pattern.
+            hits=$(printf '%s\n' "$added" \
+                     | grep -iE '\bhumans?\b' \
+                     | grep -vE '^[[:space:]]*(//|\*|#|/\*|<!--)' \
+                     | grep -ivE 'human.?in.?the.?loop|human review|human oversight|human-read|humanis|humaniz|HUMANS?_|_HUMANS?|[-_]humans?\b|human[-_]resources\b|"human"|\.human\b' || [ $? -eq 1 ])
+            if [ -n "$hits" ]; then
+              # Name the offending line. "this file contains 'human'" sent the reader hunting through
+              # prose they did not write; the added line is attributable to its author by construction.
+              # The line is PR-CONTROLLED TEXT flowing into a ::error workflow command, so escape it
+              # per the workflow-command data encoding (% -> %25 first, then CR/LF). head -1 already
+              # guarantees no literal newline, but a raw '%' would let crafted text decode into
+              # sequences we never wrote — encode rather than trust.
+              first=$(printf '%s\n' "$hits" | head -1 | cut -c1-160)
+              first=${first//'%'/%25}; first=${first//$'\r'/%0D}; first=${first//$'\n'/%0A}
+              echo "::error file=$fsafe::'human/humans' in NEW marketing copy — use 'people' or second person (frameworks/copywriting/voice-and-tone.md). First offending ADDED line: $first"
               fail=1
             fi
-          done < <(git diff --name-only --diff-filter=ACM "${base}...HEAD" 2>/dev/null)
+          done <"$list"
           if [ "$any" = 0 ]; then echo "no changed user-facing files — voice gate is a no-op"; exit 0; fi
           if [ "$fail" = 0 ]; then echo "voice gate passed"; fi
           exit "$fail"
@@ -257,14 +1546,14 @@ jobs:
     # so it can't disagree with the contract. No-op for repos without a billing.config.yaml. Advisory on
     # rollout (continue-on-error) so a new gate can't break every spoke at once; harden to blocking after soak.
     # The commit-time twin (registry gate) is the documented follow-up in frameworks/gates/registry.yaml.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     continue-on-error: true
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.14" }
       - name: Billing & Settlement contract gate
         run: |
@@ -284,14 +1573,14 @@ jobs:
     # (kills the storage_gb-vs-wave_storage_gb / voice_minutes-vs-voice_synthesis_minutes drift class).
     # Schema-driven (reads the enums, never hardcodes the list). Advisory on rollout (continue-on-error) so a
     # new gate can't break every spoke at once; harden to blocking after soak.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     continue-on-error: true
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.14" }
       - name: Canonical meter-registry gate
         run: |
@@ -316,16 +1605,532 @@ jobs:
   # check into a required check only on spokes whose graph is on and signal is clean.
   dependency-review:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - name: Dependency review (vulns + licenses)
         continue-on-error: true
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
+
+  # PR body floor — the WAVE PR-description bar, enforced as a shared gate so EVERY repo and every
+  # peer (agent or vendor bot) hits it. Not a style preference: measured against 50 real merged PRs
+  # across five WAVE repos, the smallest solid body was 1,655
+  # chars and the median was ~4.5k-8k; one-liners were 150-300. A 1,200-char floor passes every one
+  # of those 50 real PRs (zero false-positives) and rejects the entire one-liner class.
+  #
+  # Deliberately FORMAT-AGNOSTIC: ~60% of the fleet's good PR bodies use no '##' headers at all, so
+  # a header requirement would reject real work. Keyword-blocklists were also rejected after
+  # measurement: "fix me" appears inside "fix merged" and "1 todo" is legit vitest output. The floor
+  # is the only thing that both holds and doesn't misfire.
+  #
+  # Exempts bot authors (external-actor-bound-by-mechanism-not-prose: a vendor PR is a PROPOSAL — its
+  # body is the vendor's record, not ours to police).
+  #
+  # FAIL-CLOSED BY DESIGN, deliberately NOT advisory-first. The house precedent is a trap:
+  # dependency-review / billing-contract / meter-registry shipped continue-on-error:true and were
+  # NEVER promoted to required checks (measured 2026-08-12 — only 'enforce'/build/secrets are
+  # required anywhere) — advisory gates that never got promoted are the "present gate is not a firing
+  # gate" failure from external-actor-bound-by-mechanism-not-prose corollary 1. This gate is the
+  # user-facing bar for a fleet of peers, so it must actually refuse. It ships measured (50 real PRs,
+  # zero false-positives) — the fleet is already clean. Fails closed on every pull_request event:
+  # a NULL body (the API's shape for "no description at all") normalises to 0 chars and fails like
+  # any other thin body, so the very thinnest PR cannot slip past by leaving the description empty.
+  #
+  # NOTE on re-runs: a `workflow_call` reusable cannot listen for `pull_request` body-edit events
+  # (the CALLER's `on:` controls triggers), so a body-only fix needs a commit push or a manual
+  # "Re-run". Deliberately do NOT tell callers to add `edited` to their pull_request `types:`:
+  # `edited` fires at an UNCHANGED head SHA — with cancel-in-progress:true that is the rule9/#1020
+  # cancelled-check-run-debris class — and review bots edit PR bodies repeatedly, so the ENTIRE
+  # gate would re-run several times per PR (the rule8/wave-rig#174 double-run cost class).
+  #
+  # Also guards pull_request_target: a consumer whose gate runs on that event (fork PRs needing
+  # secrets) would otherwise get a silently-SKIPPED pr-body job while enforce_pr_body reads true
+  # (fail-open). Safe here: this job checks out nothing and runs no PR code — it only reads the
+  # body/author strings via env.
+  pr-body:
+    if: inputs.enforce_pr_body && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: PR body floor (min 1200 substantive chars, bot-authored exempt)
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          body = os.environ.get("PR_BODY", "") or ""
+          author = os.environ.get("PR_AUTHOR", "") or ""
+          # Bot exemption keys on the API's own classification (user.type == "Bot" covers every
+          # GitHub App) rather than login-string heuristics alone; the named logins remain for
+          # approved automation identities that run as plain User accounts.
+          author_type = os.environ.get("PR_AUTHOR_TYPE", "") or ""
+          if author_type == "Bot" or author.endswith("[bot]") or author.lower() in ("dependabot", "renovate"):
+              print("bot-authored PR — body floor exempt (external-actor-bound-by-mechanism-not-prose)")
+              sys.exit(0)
+          # Measure SUBSTANCE, not boilerplate. GitHub pre-fills every body with the repo's
+          # pull_request_template.md (this repo's is ~1.1k chars of comments/headers/checkboxes),
+          # so a raw len() would let ~40 typed chars clear the 1200 floor — and a consumer whose
+          # template is >=1200 chars would get a permanently no-op gate. Strip the content-free
+          # shapes templates are made of; everything the author WROTE still counts:
+          #   - HTML comments (template instructions + bot markers are invisible to a reviewer).
+          #     An UNCLOSED '<!--' hides everything to end-of-body in rendered markdown, so it
+          #     strips to end-of-input too — otherwise 1200 invisible chars would pass.
+          #   - checkbox MARKERS only ('- [x] ', '1. [ ] '): ticking a box types no prose, but
+          #     the line's TEXT still counts — WAVE bodies put real verification prose on
+          #     checklist lines, and the 50-PR calibration was measured raw, so discarding whole
+          #     lines would risk failing checklist-heavy bodies from the measured-clean class
+          #     (false positives, the one thing this gate promised not to produce). The residual
+          #     template text this keeps (693 measured chars here) still rejects one-liners —
+          #     but a consumer with a prose-heavy template whose residual reaches the floor gets
+          #     a permanently no-op gate, so CONSUME.md makes measuring every consumer template's
+          #     residual part of the pre-arming review for enforce_pr_body.
+          #   - markdown header MARKERS only ('## '): heading TEXT is author-written wording and
+          #     counts ('## Why: migrating off the legacy meter enum' is real content) — only the
+          #     hash skeleton doesn't, and a hashes-only line drops entirely. Same false-positive
+          #     reasoning as checkboxes: discarding whole heading lines (and '#'-comment lines
+          #     inside fenced code blocks, which this pass cannot tell apart) would eat into the
+          #     calibrated margin on heading-heavy bodies from the measured-clean class.
+          #   - whitespace PADDING: runs of whitespace collapse to a single char before counting,
+          #     so blank-line/space stuffing gains nothing, while normal prose (already
+          #     single-spaced) keeps effectively its raw calibrated length.
+          # Calibration holds: the 50 measured PR bodies are prose-heavy, so the smallest solid
+          # body (1,655 raw) loses well under the ~455-char margin to the floor.
+          body = re.sub(r"<!--.*?(?:-->|$)", "", body, flags=re.DOTALL)
+          kept = []
+          for ln in body.splitlines():
+              if re.fullmatch(r"#{1,6}\s*", ln.strip()):
+                  continue
+              ln = re.sub(r"^\s*#{1,6}\s+", "", ln)
+              kept.append(re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*\[[ xX]\]\s*", "", ln))
+          L = len(re.sub(r"\s+", " ", "\n".join(kept)).strip())
+          if L < 1200:
+              print(f"::error::PR body too thin ({L} substantive chars; floor 1200 — HTML comments, checkbox/header markers and whitespace padding don't count). A reviewer needs WHAT/WHY/verification to act cold. See the WAVE PR-body standard (wave-foundation checks.yml pr-body gate). Fix the body, then push or Re-run this check.")
+              sys.exit(1)
+          print(f"PR body {L} substantive chars — above the 1200 floor")
+          PY
+        env:
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+
+  # Public-changelog gate (ADVISORY during rollout — see the changelog-standard design). The public
+  # CHANGELOG.md is a surface customers read, so it must be non-empty under [Unreleased] and free of
+  # internal-only references. UNIFORM for private repos: a private changelog can be mirrored public,
+  # so it is written public-safe from day one.
+  #
+  # Advisory (continue-on-error-equivalent via exit 0): reports the standard's findings without
+  # blocking the fleet mid-rollout. Promote to blocking after the measured soak — the pr-body gate
+  # lesson (advisory gates that never get promoted are the "present gate is not a firing gate" trap).
+  changelog:
+    if: inputs.enforce_changelog && github.event_name == 'pull_request'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Public changelog quality + protection (advisory)
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          path = "CHANGELOG.md"
+          if not os.path.exists(path):
+              print("::warning::changelog: no CHANGELOG.md — repos with a public surface need one (changelog-standard).")
+              sys.exit(0)
+          text = open(path, encoding="utf-8", errors="replace").read()
+
+          # Internal-only patterns that must never appear in the PUBLIC changelog.
+          internal = [
+              r"\bwrangler secret put\s+\w+", r"\b[A-Z][A-Z0-9_]{2,}_AUTH_TOKEN\b",
+              r"\b[A-Z][A-Z0-9_]{2,}_TOKEN\b", r"\bPAT\b", r"src/", r"\.ts\b",
+              r"wrangler\.toml", r"CHANGELOG\.internal",
+              r"github\.com/wave-av/[a-z-]+/(pull|issues)/\d+", r"\(#\d+\)",
+              r"\bwave-av/",
+          ]
+          errs = []
+          um = re.search(r"^## \[Unreleased\]", text, re.M)
+          if not um:
+              errs.append("missing ## [Unreleased] section")
+          else:
+              after = text[um.start():]
+              body = after[after.find("]") + 1:]
+              nxt = re.search(r"^## \[", body, re.M)
+              unreleased = body[:nxt.start()] if nxt else body
+              if not re.search(r"^### (Added|Changed|Deprecated|Removed|Fixed|Security)$", unreleased, re.M):
+                  errs.append("no Keep-a-Changelog category under [Unreleased]")
+              prose = re.sub(r"<!--.*?(?:-->|$)", "", unreleased, flags=re.DOTALL)
+              sub = [l for l in prose.split("\n") if not re.match(r"^\s*#", l) and l.strip() and not re.match(r"^### ", l.strip())]
+              if len(sub) < 1:
+                  errs.append("[Unreleased] is empty — a user-facing change needs an entry")
+          for pat in internal:
+              m = re.search(pat, text, re.I)
+              if m:
+                  errs.append(f"internal-only reference in public changelog: {m.group(0).strip()[:50]}")
+          for e in errs:
+              print(f"::warning::changelog: {e}")
+          if errs:
+              print("::warning::changelog: public changelog does not meet the WAVE standard (advisory during rollout). See the changelog-standard design.")
+          else:
+              print("changelog: public CHANGELOG.md OK")
+          sys.exit(0)  # ADVISORY — do not block during rollout; promote to exit 1 after soak.
+          PY
+
+  # CI-efficiency static gate (#3932, gha-billing-efficiency P3). Four STATIC rules over the
+  # caller's own workflow YAML, zero API cost (no gh calls, no network; PyYAML only):
+  #   DOUBLE-FIRE              schedule: plus push:/pull_request: on one workflow: every PR
+  #                           and push pays for a workflow whose scheduled pass already
+  #                           covers the tree. Split the scheduled sweep into its own file.
+  #   COMMENT-FANOUT           issue_comment / pull_request_review(_comment) with no author
+  #                           filter or command-prefix guard visible: any comment on any
+  #                           issue or PR fires a paid run.
+  #   FAST-CRON                a cron firing more than once per hour (two or more distinct
+  #                           minute values in the minute field).
+  #   FAST-CRON-ON-EXPENSIVE   a sub-hour cron on a GitHub-hosted paid runner (ubuntu-latest
+  #                           and friends); a fast cron must use a cheap or fenced family
+  #                           (blacksmith-*, depot-*, self-hosted).
+  # ADVISORY ON PURPOSE: job-level continue-on-error plus the script's exit 0. The August
+  # 2026 billing audit measured real existing violations fleet-wide, so a hard fail would
+  # break every fleet PR at once. The flip to blocking is tracked in #3932: add --strict to
+  # the invocation below (findings then print ::error:: and exit 1) and drop the
+  # continue-on-error once the burn-down lands. Not fail-open silent: a missing PyYAML
+  # degrades to a ::notice::, never to a quiet skip.
+  # The python below is a VERBATIM twin of frameworks/gates/scripts/ci-efficiency-check.py.
+  # This is a reusable workflow that runs on the CALLER's checkout, and consumer repos carry
+  # no foundation scripts, so the live gate inlines the checker the same way the secret-scan
+  # step does. test-ci-efficiency.sh byte-compares the twin against the canonical file, so
+  # the two can never drift.
+  # Scope: a pull_request checks only the workflow files the PR changed (diff against the PR
+  # base; zero changed workflow files is a clean skip). Every other trigger (schedule, push,
+  # dispatch, or a base that cannot be resolved) checks the whole tree, which is also the
+  # scheduled-census pass. Failing open to MORE checking is the safe direction for an
+  # advisory gate.
+  ci-efficiency:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # PR scope diffs the changed workflow files against the PR base
+          persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+      - name: CI-efficiency static check (advisory)
+        run: |
+          # PyYAML availability: same retry ladder as the Workflow-policy enforce step. The
+          # script itself decides fail-open (advisory) vs fail-closed (strict); this preamble
+          # only installs the dependency.
+          for _ in 1 2 3; do
+            python3 -c "import yaml" 2>/dev/null && break
+            pip install --quiet --disable-pip-version-check pyyaml 2>/dev/null || true
+            sleep 2
+          done
+          # Scope: positional args for the PR diff, none for the full-tree census. A PR with
+          # zero changed workflow files is a clean skip, not a full-tree scan.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$PR_BASE_SHA" ]; then
+            MERGE_BASE="$(git merge-base "$PR_BASE_SHA" HEAD 2>/dev/null || true)"
+            if [ -n "$MERGE_BASE" ]; then
+              SCOPE="$(git diff --name-only "$MERGE_BASE" HEAD -- .github/workflows 2>/dev/null || true)"
+              if [ -n "$SCOPE" ]; then
+                # shellcheck disable=SC2086 # newline-separated paths, one path per arg is the point
+                set -- $SCOPE
+              else
+                echo "::notice::ci-efficiency: no workflow files changed in this PR; nothing to check."
+                exit 0
+              fi
+            fi
+          fi
+          python3 - "$@" <<'PY'
+          #!/usr/bin/env python3
+          """ci-efficiency-check.py: static CI-efficiency gate (issue #3932, gha-billing-efficiency P3).
+
+          Four rules, all STATIC text checks over workflow YAML. Zero API cost: no gh calls, no
+          network, just PyYAML over .github/workflows. The August 2026 org billing audit measured
+          the waste classes these rules kill: cron spam and double-fires alone were ~$35/mo of pure
+          noise, and every PR pays again for workflows whose scheduled pass already covers the tree.
+
+            DOUBLE-FIRE              a workflow with both schedule: and push:/pull_request: triggers.
+                                     Every PR and push pays for a workflow whose scheduled pass already
+                                     covers the same tree. Split the scheduled sweep into its own file.
+            COMMENT-FANOUT           an issue_comment / pull_request_review(_comment) trigger with no
+                                     author filter or command-prefix guard visible in the file. Without
+                                     a guard, ANY comment on ANY issue or PR fires a paid run.
+            FAST-CRON                a cron that fires more than once per hour: two or more distinct
+                                     minute values in the minute field (a '*' counts as all sixty).
+                                     Sub-hour crons multiply runner cost around the clock.
+            FAST-CRON-ON-EXPENSIVE   a sub-hour cron whose job runs on a GitHub-hosted paid label
+                                     (ubuntu-latest and friends). A fast cron must use a cheap or
+                                     fenced runner family: blacksmith-*, depot-*, self-hosted.
+
+          MODES
+            Advisory (default): findings print as ::warning:: annotations and the exit code is 0.
+            A hard fail here would break every fleet PR at once on existing violations, so the gate
+            ships advisory and flips to blocking only after the burn-down tracked in #3932.
+            --strict: findings print as ::error:: and exit 1. The blocking flip is exactly this flag
+            plus dropping the job-level continue-on-error; nothing else changes.
+
+          USAGE
+            python3 ci-efficiency-check.py [files...]     no args: every .github/workflows/*.{yml,yaml}
+            python3 ci-efficiency-check.py --strict ...   exit 1 on any finding (the blocking mode)
+
+          The live gate INLINES this file verbatim in .github/workflows/checks.yml (job
+          ci-efficiency): checks.yml is a reusable workflow that runs on the CALLER's checkout, and
+          consumer repos carry no foundation scripts. test-ci-efficiency.sh byte-compares the inline
+          twin against this file so the two can never drift; same shape as secret-scan.sh.
+          """
+
+          import argparse
+          import glob
+          import re
+          import sys
+
+          try:
+              import yaml
+          except ImportError:
+              yaml = None
+
+          # GitHub-hosted paid labels: the expensive set for FAST-CRON-ON-EXPENSIVE. Cheap or fenced
+          # families (blacksmith-*, depot-*, self-hosted, and any unrecognized label) never match:
+          # the rule only fires on labels it can PROVE are GitHub-hosted, so an unknown private
+          # runner pool is never a false finding.
+          EXPENSIVE_RUNNER_RE = re.compile(
+              r"^(ubuntu-(latest|\d{2}\.\d{2})|macos-(latest|\d+)|windows-(latest|\d{4}))$"
+          )
+
+          # Guard signals for COMMENT-FANOUT: any of these anywhere in the file counts as a visible
+          # author filter or command match and suppresses the finding. Deliberately generous (raw
+          # text, not only if: blocks, because a guard may sit in an env: or a with: handoff to an
+          # action): the advisory gate must not cry wolf. A false negative only slows the #3932
+          # burn-down; a false positive erodes trust in every warning the gate prints.
+          GUARD_RES = (
+              re.compile(r"github\.event\.comment\.user"),
+              re.compile(r"github\.event\.review\.user"),
+              re.compile(r"github\.event\.sender"),
+              re.compile(r"author_association"),
+              re.compile(r"github\.actor"),
+              re.compile(r"github\.event\.comment\.body"),
+              re.compile(r"github\.event\.review\.body"),
+          )
+
+          COMMENT_TRIGGERS = ("issue_comment", "pull_request_review", "pull_request_review_comment")
+          PR_OR_PUSH_TRIGGERS = ("push", "pull_request", "pull_request_target")
+
+
+          def _safe(value):
+              # The live gate runs this check on the CALLER's tree, so every YAML value read here
+              # (paths, job names, cron strings, runner labels) is untrusted caller content. Strip
+              # CR/LF and break the command prefix before interpolating into a ::-prefixed
+              # annotation line; same guard the WAS lint uses (checks.yml, #890).
+              return str(value).replace("\r", " ").replace("\n", " ").replace("::", ":​:")
+
+
+          def expand_field(field, lo, hi):
+              """Expand one cron field to the set of integers it matches, or None if unparseable.
+
+              Handles the shapes GitHub crons use: '*' (with optional /N step), 'A-B' (with optional
+              /N), bare 'A', comma lists, and vixie-style 'A/N' (A to the field top, every N).
+              """
+              values = set()
+              for part in str(field).split(","):
+                  part = part.strip()
+                  if not part:
+                      return None
+                  step = 1
+                  had_step = False
+                  if "/" in part:
+                      base, _, step_text = part.partition("/")
+                      part = base
+                      had_step = True
+                      try:
+                          step = int(step_text)
+                      except ValueError:
+                          return None
+                      if step < 1:
+                          return None
+                  if part == "*":
+                      start, end = lo, hi
+                  elif "-" in part:
+                      a, _, b = part.partition("-")
+                      try:
+                          start, end = int(a), int(b)
+                      except ValueError:
+                          return None
+                  else:
+                      try:
+                          start = int(part)
+                      except ValueError:
+                          return None
+                      end = hi if had_step else start
+                  if start > end:
+                      return None
+                  values.update(range(start, end + 1, step))
+              return values
+
+
+          def cron_minutes(cron):
+              """Return the set of minute values a 5-field cron matches, or None if unparseable."""
+              fields = str(cron).split()
+              if len(fields) != 5:
+                  return None
+              return expand_field(fields[0], 0, 59)
+
+
+          def check_file(path):
+              """Return the findings for one workflow file as a list of (rule, message) pairs."""
+              findings = []
+              if yaml is None:
+                  # Self-contained guard: main() already refuses to run without PyYAML, but this
+                  # function stays independently safe (and type-clean) if called directly.
+                  print("::notice::ci-efficiency: PyYAML unavailable; cannot check workflow files.")
+                  return findings
+              try:
+                  with open(path, encoding="utf-8", errors="replace") as fh:
+                      text = fh.read()
+              except OSError as exc:
+                  print(f"::notice::ci-efficiency: cannot read {_safe(path)} ({exc}); skipping")
+                  return findings
+              try:
+                  doc = yaml.safe_load(text)
+              except Exception as exc:
+                  print(f"::notice::ci-efficiency: {_safe(path)} unparseable ({exc}); skipping")
+                  return findings
+              if not isinstance(doc, dict):
+                  return findings
+
+              # YAML 1.1 parses a bare on: key as boolean True; same dance the WAS lint does.
+              on = doc.get("on", doc.get(True, {}))
+              if isinstance(on, str):
+                  on = {on: None}
+              elif isinstance(on, list):
+                  on = {k: None for k in on}
+              if not isinstance(on, dict):
+                  on = {}
+
+              # DOUBLE-FIRE: schedule: plus push:/pull_request: on one workflow.
+              fired = sorted(t for t in PR_OR_PUSH_TRIGGERS if t in on)
+              if "schedule" in on and fired:
+                  findings.append((
+                      "DOUBLE-FIRE",
+                      f"has both schedule: and {'/'.join(fired)}: triggers; every PR or push pays "
+                      "for a workflow whose scheduled pass already covers the tree. Split the "
+                      "scheduled sweep into its own workflow file.",
+                  ))
+
+              # FAST-CRON: any schedule entry that fires more than once per hour. Two or more
+              # distinct minute values always yield a sub-hour gap; a single minute value never
+              # does (the worst case is exactly hourly).
+              sched = on.get("schedule")
+              entries = sched if isinstance(sched, list) else [sched] if isinstance(sched, dict) else []
+              fast = False
+              for entry in entries:
+                  if not isinstance(entry, dict):
+                      continue
+                  cron = entry.get("cron")
+                  if cron is None:
+                      continue
+                  minutes = cron_minutes(cron)
+                  if minutes is None:
+                      print(f"ci-efficiency: {_safe(path)}: cron '{_safe(cron)}' unparseable; skipping it")
+                      continue
+                  if len(minutes) >= 2:
+                      fast = True
+                      findings.append((
+                          "FAST-CRON",
+                          f"cron '{_safe(cron)}' fires more than once per hour; sub-hour crons "
+                          "multiply runner cost around the clock. Keep the interval at 60 minutes "
+                          "or slower.",
+                      ))
+
+              # FAST-CRON-ON-EXPENSIVE: a sub-hour cron whose job sits on a GitHub-hosted paid
+              # label. One finding per offending job; expression-valued runs-on labels cannot be
+              # resolved statically and are skipped.
+              if fast:
+                  for job_name, job in (doc.get("jobs") or {}).items():
+                      if not isinstance(job, dict):
+                          continue
+                      runs_on = job.get("runs-on")
+                      if runs_on is None:
+                          continue
+                      labels = runs_on if isinstance(runs_on, list) else [runs_on]
+                      for label in labels:
+                          label = str(label)
+                          if "{{" in label:
+                              continue
+                          if EXPENSIVE_RUNNER_RE.match(label):
+                              findings.append((
+                                  "FAST-CRON-ON-EXPENSIVE",
+                                  f"sub-hour cron on GitHub-hosted runner '{_safe(label)}' (job "
+                                  f"'{_safe(job_name)}'); a fast cron must use a cheap or fenced "
+                                  "runner family: blacksmith-*, depot-*, or self-hosted.",
+                              ))
+                              break
+
+              # COMMENT-FANOUT: a comment-shaped trigger with no visible guard.
+              comment_events = sorted(t for t in COMMENT_TRIGGERS if t in on)
+              if comment_events and not any(rx.search(text) for rx in GUARD_RES):
+                  findings.append((
+                      "COMMENT-FANOUT",
+                      f"{', '.join(comment_events)} trigger with no author filter or command-prefix "
+                      "guard visible in the file; any comment on any issue or PR fires a paid run. "
+                      "Add an if: on the sender or author, or match a command prefix (the pr-agent "
+                      "cost-abuse gate in wave-foundation is the house pattern).",
+                  ))
+
+              return findings
+
+
+          def main(argv=None):
+              parser = argparse.ArgumentParser(
+                  description="Static CI-efficiency gate: double-fire, comment-fanout, fast-cron "
+                  "and fast-cron-on-expensive checks over GitHub workflow YAML (#3932)."
+              )
+              parser.add_argument(
+                  "files",
+                  nargs="*",
+                  help="workflow files to check; with no args, every .github/workflows/*.{yml,yaml}",
+              )
+              parser.add_argument(
+                  "--strict",
+                  action="store_true",
+                  help="exit 1 on any finding (the future blocking mode after the #3932 burn-down)",
+              )
+              args = parser.parse_args(argv)
+
+              if yaml is None:
+                  # Advisory mode fails OPEN (a missing dependency must never wedge a caller's PR);
+                  # strict mode fails CLOSED (the blocking flip must not fail silent).
+                  mode = "strict" if args.strict else "advisory"
+                  print(f"::notice::ci-efficiency: PyYAML unavailable; cannot check workflows in {mode} mode.")
+                  return 1 if args.strict else 0
+
+              if args.files:
+                  paths = list(args.files)
+              else:
+                  paths = sorted(
+                      glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")
+                  )
+
+              level = "error" if args.strict else "warning"
+              total = 0
+              for path in paths:
+                  for rule, message in check_file(path):
+                      print(f"::{level}::ci-efficiency[{rule}] {_safe(path)}: {message}")
+                      total += 1
+              mode = "strict" if args.strict else "advisory: warnings only, the gate stays green"
+              print(f"ci-efficiency: scanned {len(paths)} workflow file(s), {total} finding(s) ({mode})")
+              if total and args.strict:
+                  return 1
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          PY
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}

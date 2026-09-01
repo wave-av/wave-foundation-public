@@ -1,0 +1,16 @@
+name: bad-a2-schedule-pr
+# DOUBLE-FIRE, the pull_request half of the disjunction: schedule: plus pull_request:
+# with no push: at all.
+on:
+  pull_request:
+  schedule:
+    - cron: "30 5 * * *"
+concurrency:
+  group: bad-a2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - run: echo schedule-plus-pr

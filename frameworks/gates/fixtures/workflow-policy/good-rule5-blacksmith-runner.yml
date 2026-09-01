@@ -1,0 +1,36 @@
+name: good-rule5-blacksmith-runner
+# rule5 positive case: a Blacksmith ubuntu label is policy-legal (zero GitHub Actions minutes,
+# same image family, pip-capable). Pairs with bad-rule5-blacksmith-malformed.yml, which proves
+# the widening is an anchored enumeration and not a "starts with blacksmith-" free-for-all.
+# The macOS jobs cover the Blacksmith macOS widening (self-hosted registration, zero GitHub
+# Actions minutes, cap-surviving); bad-rule5-blacksmith-macos-malformed.yml is their negative.
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: good-rule5-blacksmith-runner-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-arm:
+    runs-on: blacksmith-8vcpu-ubuntu-2204-arm
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-macos:
+    runs-on: blacksmith-6vcpu-macos-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo ok
+  build-macos-pinned:
+    runs-on: blacksmith-12vcpu-macos-15
+    timeout-minutes: 5
+    steps:
+      - run: echo ok

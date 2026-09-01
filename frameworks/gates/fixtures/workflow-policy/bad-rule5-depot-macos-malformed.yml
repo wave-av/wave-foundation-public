@@ -1,0 +1,19 @@
+name: bad-rule5-depot-macos-malformed
+# rule5 negative case for the Depot widening: `runs-on` is UNTRUSTED caller YAML, so the regex is an
+# anchored enumeration — a trailing "-evil" (or any non-enumerated vCPU/OS shape) must NOT pass. Proves
+# the widening is not a "starts with depot-" free-for-all.
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  merge_group:
+concurrency:
+  group: bad-rule5-depot-macos-malformed-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: depot-macos-26-evil
+    timeout-minutes: 5
+    steps:
+      - run: echo ok

@@ -1,0 +1,23 @@
+# STAGED (rule9 is SHADOW) — see the rule9 section of test-workflow-policy.sh for why.
+# Shape: pr-review-context.yml as it stood before #1020. Note the pull_request trigger here is
+# CLEAN (no types: at all, so the safe default set) — every finding comes from the three
+# review/comment events, which fire whenever a bot speaks and never advance the head SHA. This is
+# the case a types-only predicate would miss entirely.
+name: bad-rule9-review-events
+on:
+  pull_request:
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+concurrency:
+  group: bad-rule9-review-events-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

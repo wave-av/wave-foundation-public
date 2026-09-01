@@ -1,0 +1,16 @@
+name: bad-d-fast-cron-expensive
+# FAST-CRON-ON-EXPENSIVE: a 15-minute cron whose job sits on ubuntu-latest. Both the
+# FAST-CRON finding (the cron itself) and the FAST-CRON-ON-EXPENSIVE finding (the paid
+# runner under a fast cron) must fire, two findings in total.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+concurrency:
+  group: bad-d-fast-cron-expensive
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo expensive

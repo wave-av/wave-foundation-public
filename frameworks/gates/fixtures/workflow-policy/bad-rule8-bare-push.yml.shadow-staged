@@ -1,0 +1,14 @@
+# STAGED (rule8 is SHADOW) — see bad-rule8-push-staging-and-main.yml.shadow-staged header for why.
+name: bad-rule8-bare-push
+on:
+  pull_request:
+  push:
+concurrency:
+  group: bad-rule8-bare-push-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo ok

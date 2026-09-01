@@ -1,0 +1,15 @@
+name: good-cron-daily-gh-runner
+# FAST-CRON-ON-EXPENSIVE negative case: ubuntu-latest is fine for a SLOW cron. The
+# expensive-runner rule fires only when the cron itself is sub-hour.
+on:
+  schedule:
+    - cron: "30 5 * * *"
+concurrency:
+  group: good-cron-daily-gh-runner
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo daily

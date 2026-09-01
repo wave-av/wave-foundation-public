@@ -31,9 +31,21 @@ rules:
     # read, purely so this reusable workflow can fetch the SSoT wire-sentry-dsn.sh from the PRIVATE
     # foundation repo (a reusable workflow runs with the caller's GITHUB_TOKEN, which can't read another
     # private repo). App-level least-privilege is the control; single-repo scope. Same precedent as io-*.
+    #
+    # public-guard-drift.yml: mints a wave-av-release-bot token to open the vendored-guard sync PRs.
+    # `repositories:` narrowing IS applied (the 28 guard-vendoring repos, explicitly listed) — only the
+    # permission-* half is omitted, and unlike the entries above this one is MEASURED, not predicted:
+    #   run 30864873825  with permission-contents/pull-requests: write  -> 28 repos · 0 PR(s) · 28 fix failure(s)
+    #   run 30867002976  same commit, those two inputs removed          -> 28 repos · 28 PR(s)
+    # Every failure was HTTP 403 "Resource not accessible by integration" on POST .../git/trees —
+    # including wave-foundation-public, which this same App writes to fine from open-core-publish.yml.
+    # 403 (not 404) means the token reached each repo and lacked contents:write, i.e. the narrowing did
+    # not do what its name implies. This is the SAME failure the io-* note above predicted; that note
+    # was the standing precedent, this is the receipt. Root cause open: claude-workstation#1373.
     ignore:
       - reusable-bot-token.yml
       - open-core-publish.yml
+      - public-guard-drift.yml
       - io-triage.yml
       - io-assess.yml
       - io-action.yml
@@ -76,6 +88,8 @@ rules:
     # zizmor flags the publish trigger + setup-node *capability* (confidence: Low). Accepted.
     # release-observability.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
     # release-messaging.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
+    # release-content-hash.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
+    # release-container-pool.yml: same pattern (no `cache:` key, tag-gated publish). Accepted.
     # obs-wire.yml: enables NO caching anywhere (no `cache:` key on any step) → no cache is ever
     # restored, so there is no poisoned-cache vector. zizmor flags the capability at Low confidence
     # because the job mutates external state (the idempotent CF secret PUT). Accepted, same as above.
@@ -83,6 +97,8 @@ rules:
       - release-spoke-chassis.yml
       - release-observability.yml
       - release-messaging.yml
+      - release-content-hash.yml
+      - release-container-pool.yml
       - obs-wire.yml
   use-trusted-publishing:
     # release-spoke-chassis.yml publishes to PRIVATE org GitHub Packages
@@ -91,7 +107,26 @@ rules:
     # public access, which this private package can't use). Accepted.
     # release-observability.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
     # release-messaging.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
+    # release-content-hash.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
+    # release-whip-publish.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
+    # release-egress-baseband.yml: same — private GitHub Packages publish via GITHUB_TOKEN (#93 B2).
+    #   Exact parity with the five precedents above; provenance/OIDC need public access this private
+    #   package can't use. Accepted.
+    # release-container-pool.yml: same — private GitHub Packages publish via GITHUB_TOKEN. Accepted.
     ignore:
       - release-spoke-chassis.yml
       - release-observability.yml
       - release-messaging.yml
+      - release-content-hash.yml
+      - release-whip-publish.yml
+      - release-egress-baseband.yml
+      - release-container-pool.yml
+  unpinned-uses:
+    # reusable-chassis-gate.yml references the FIRST-PARTY, same-repo composite action
+    # wave-av/wave-foundation/.github/actions/chassis-check by @main. The self-ref must stay
+    # @main so callers run the action version matching the reusable's main; SHA-pinning would
+    # desync/freeze them. First-party (this repo), not a third-party supply-chain dependency, so
+    # the unpinned-uses threat does not apply. (@main is required: a reusable runs in the caller's
+    # checkout and foundation is private.) Authorized by Jake (Option A).
+    ignore:
+      - reusable-chassis-gate.yml

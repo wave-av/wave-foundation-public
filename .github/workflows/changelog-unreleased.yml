@@ -1,0 +1,117 @@
+name: Changelog (unreleased)
+
+# Keep CHANGELOG.md's [unreleased] section current between releases: on each push to master,
+# regenerate the changelog and, if it changed, open an auto-merge PR with the refresh.
+#
+# This needs an identity whose PRs trigger the required checks — the default GITHUB_TOKEN can't
+# (its PRs don't start workflows, so auto-merge would hang). It uses a GitHub App token. Until the
+# release-bot App is configured (secrets BOT_RELEASE_APP_ID + BOT_RELEASE_PRIVATE_KEY — see
+# RELEASING.md), the job cleanly no-ops. The release itself does NOT depend on this: scripts/
+# release.sh regenerates the changelog at release time regardless.
+
+on:
+  push:
+    branches: [master, main]
+
+# Coalesce rapid merges; never cancel an in-flight refresh mid-push.
+concurrency:
+  group: changelog-unreleased
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skip the bot's own changelog commits to avoid a refresh loop.
+    if: github.actor != 'wave-foundation-release[bot]'
+    steps:
+      - name: Check whether the release-bot App is configured
+        id: gate
+        env:
+          APP_ID: ${{ secrets.BOT_RELEASE_APP_ID }}
+        run: |
+          if [ -z "$APP_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "release-bot App not configured (BOT_RELEASE_APP_ID unset) — skipping. See RELEASING.md."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Mint App token
+        id: token
+        if: steps.gate.outputs.configured == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          # Least privilege: only what the refresh needs — push the branch + open the PR.
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.gate.outputs.configured == 'true'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ steps.token.outputs.token }}
+      - name: Regenerate changelog
+        if: steps.gate.outputs.configured == 'true'
+        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        with:
+          config: cliff.toml
+          args: --output CHANGELOG.md
+      - name: Open auto-merge PR if the changelog changed
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          # Normalize blank runs (markdownlint-clean) — same as scripts/release.sh.
+          python3 -c 'import re,sys;p="CHANGELOG.md";s=open(p,encoding="utf-8").read();open(p,"w",encoding="utf-8").write(re.sub(r"\n{3,}","\n\n",s).rstrip()+"\n")'
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md already current — nothing to refresh."
+            exit 0
+          fi
+          # STABLE branch name — deliberately NOT per-SHA (#1028). Embedding ${GITHUB_SHA::7} gave
+          # every merge to main its own branch, therefore its own PR, and nothing ever closed the
+          # previous one: 14 open changelog PRs accumulated in ~2 days, each carrying a full ~60
+          # check-run matrix and each firing its own org-wide license-policy-audit — the exact
+          # secondary-rate-limit pressure #1031 had just engineered out of that audit.
+          branch="chore/changelog-unreleased"
+          git switch -c "$branch"
+          git -c user.name='wave-foundation-release[bot]' \
+              -c user.email='wave-foundation-release[bot]@users.noreply.github.com' \
+              commit -m "chore: refresh unreleased changelog" -- CHANGELOG.md
+          # The checkout above sets `persist-credentials: false` (deliberately — the App token
+          # should not sit in .git/config for the rest of the job), so a bare `git push origin`
+          # has NO credentials and dies with exit 128. GH_TOKEN does not help: plain git never
+          # reads it. Push through an explicit token URL, the same idiom
+          # fleet-drift-incident-sync.yml already uses. Actions masks the token in logs.
+          #
+          # --force is required and is safe HERE specifically: this branch is rebuilt from the
+          # just-pushed main on every run, so its entire content is `main + one regenerated
+          # CHANGELOG.md` and is reproducible at any time. It is bot-owned, never a human's branch
+          # and never main. --force-with-lease is NOT usable: the branch is created fresh locally
+          # each run with no remote-tracking state, so the lease has nothing to compare against.
+          # The workflow-level `concurrency: changelog-unreleased` group already serialises runs,
+          # which is what keeps two force-pushes from racing.
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$branch"
+          # `main`, not `master` — this repo's default branch. `--base master` made every one of
+          # these PR creations fail against a branch that does not exist.
+          #
+          # Create ONLY if no open PR already points at this head. With a stable branch the force
+          # push above has already updated any existing PR in place; calling `gh pr create` again
+          # is a hard error ("a pull request for branch ... already exists"), so this guard is a
+          # correctness requirement, not tidiness.
+          prnum="$(gh pr list --head "$branch" --state open --json number -q '.[0].number')"
+          if [ -z "$prnum" ]; then
+            gh pr create --title "chore: refresh unreleased changelog" \
+              --body "Automated [unreleased] changelog refresh after a merge to main. Updated in place on every merge — see #1028." \
+              --head "$branch" --base main
+            prnum="$(gh pr view "$branch" --json number -q .number)"
+            echo "opened changelog PR #$prnum"
+          else
+            echo "updated existing changelog PR #$prnum in place"
+          fi
+          # Idempotent: re-adding a label the PR already carries is a no-op.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${prnum}/labels" -f "labels[]=automerge"

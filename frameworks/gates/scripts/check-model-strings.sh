@@ -23,11 +23,30 @@ AGG_SLUG_RE='[A-Za-z0-9_.:-]+/claude-(opus|sonnet|haiku)[A-Za-z0-9._-]*'
 # anti-pattern examples never trip (same reason lint-request-shape.sh scans code only, never .md).
 EXT_RE='\.(py|ts|tsx|js|jsx|mjs|cjs|go|rb|java|kt|cs|php|sh|json|ya?ml)$'
 
+# ENUMERATE ONCE, FAIL CLOSED (#944). `done < <(git ls-files)` cannot propagate the lister's status,
+# so a git failure left files=() and the gate printed "model-string: ✓ no date-suffixed model IDs"
+# having read nothing. This runs under pre-commit AND in CI, and is vendored into spoke repos.
+#
+# Emptiness is judged per MODE, which is why the guard is inside the else branch:
+#   - args given (pre-commit hands us the staged matching files): an empty arg list is the caller's
+#     business and never reaches here, since "$#" -gt 0 selects the other branch.
+#   - no args (whole-tree scan): zero TRACKED FILES is a broken invocation, not a clean repo.
 files=()
 if [ "$#" -gt 0 ]; then
   files=("$@")
 else
-  while IFS= read -r f; do files+=("$f"); done < <(git ls-files)
+  list="$(mktemp)"
+  chmod 0600 "$list"
+  trap 'rm -f "$list"' EXIT
+  if ! git ls-files -z >"$list"; then
+    echo "model-string: ✗ git ls-files FAILED — refusing to report a pass over an enumeration that never happened." >&2
+    exit 2
+  fi
+  if [ ! -s "$list" ]; then
+    echo "model-string: ✗ enumerated 0 tracked files. git succeeded, so this is a working-directory or repository problem — refusing to report a pass." >&2
+    exit 2
+  fi
+  while IFS= read -r -d '' f; do files+=("$f"); done <"$list"
 fi
 
 fail=0

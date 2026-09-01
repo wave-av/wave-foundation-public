@@ -9,30 +9,113 @@ on:
   push:
     branches: [master, main]
   pull_request:
-
-permissions:
-  contents: read
+  merge_group: # required check (zizmor) — must run on the merge-queue group
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   zizmor:
+    # ubuntu-latest, NOT blacksmith: this job now reads secrets.DOPPLER_TOKEN, and the runner rule
+    # (rules/workflow-authoring.md ⛔) routes anything touching a production secret — Doppler
+    # explicitly named — to GitHub-hosted only. Same placement as sentry-coverage-drift.yml.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - run: pip install zizmor==1.25.2
-      - name: Audit workflows
+      - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
+      # Online audits (impostor-commit, known-vulnerable actions via GHSA) need a token that can
+      # ALSO read the PRIVATE org sibling claude-workstation — wave-sec-gate.yml's `uses:` ref.
+      # The repo-scoped github.token 404s on it, and impostor-commit dies with a FATAL
+      # "no audit was performed" error — not a finding, so neither .github/zizmor.yml rules nor
+      # inline `# zizmor: ignore[...]` comments can suppress it (verified on 1.25.2 and 1.29.0).
+      # Excluding that file from online audits would leave the org's only cross-repo secret
+      # hand-off as the one ref never verified against its callee (flagged in review on #1141).
+      # Instead, source the org-read GH_PAT_WORKFLOW from Doppler — same project/config as
+      # sentry-coverage-drift.yml and the wave-sec-gate callee itself — so EVERY workflow,
+      # wave-sec-gate.yml included, gets the full online audit set.
+      #
+      # CREDENTIAL ISOLATION (all flagged in review on #1141): `doppler secrets get` (single
+      # secret), NOT `doppler run` (full wave/prd injection); the fetch happens IN-PROCESS in the
+      # audit step and the PAT is never written to $GITHUB_OUTPUT or any file, per
+      # rules/secrets-from-doppler.md ("never printed or persisted"). DOPPLER_TOKEN is `unset`
+      # before zizmor is invoked, so the third-party zizmor process inherits exactly one org-READ
+      # PAT — never DOPPLER_TOKEN. GitHub only auto-masks GitHub secrets, so the fetched value is
+      # ::add-mask::ed as soon as it exists.
+      #
+      # PUBLIC MIRROR (this file is in PUBLIC_WORKFLOWS, synced verbatim to wave-foundation-public
+      # where DOPPLER_TOKEN is unset — and it is unset on fork PRs there too): the fetch no-ops
+      # cleanly when the secret is absent, same precedent as changelog-unreleased
+      # (scripts/sync-public.sh). That is safe because wave-sec-gate.yml — the ONLY ref needing
+      # the PAT — is NOT mirrored, so the repo-scoped github.token fallback below gives the mirror
+      # exactly the pre-#1141 behavior.
+      #
+      # FORK PRs AGAINST THIS REPO (flagged in review on #1141): DOPPLER_TOKEN is also absent
+      # there, but wave-sec-gate.yml IS present, so the github.token fallback would hit the FATAL
+      # impostor-commit path above on a hard-required check with no way to go green. On a genuine
+      # fork PR (head.repo.fork per the event payload) the audit therefore runs
+      # --no-online-audits: full offline coverage of every workflow, degraded (not dead) online
+      # coverage. The mirror keeps its full-online github.token fallback since the gate file is
+      # never synced there. COMPENSATING CONTROL (flagged in review on #1141): the degraded tier
+      # only ever applies to the fork PR's own check run — zizmor is a required check that also
+      # runs on merge_group (see `on:` above), where DOPPLER_TOKEN is available, so every fork PR
+      # still gets the FULL online audit set (impostor-commit, GHSA) in the merge queue before it
+      # can land on main. A malicious `uses:` pin from a fork is caught pre-merge, not post.
+      #
+      # MISCONFIGURATION IS LOUD (flagged in review on #1141): token absence is NOT proof of a
+      # fork PR — a removed/renamed/unpropagated org secret looks identical. So when the gate
+      # file exists and the trigger is trusted (push, merge_group, same-repo PR), an absent
+      # DOPPLER_TOKEN — or an empty PAT fetched from Doppler — FAILS the step with ::error::
+      # instead of quietly passing green with the online audit tier skipped.
+      #
+      # RECOVERY (zizmor is a hard-required check, so a Doppler outage or PAT rotation must not
+      # stall the queue): temporarily replace the token-fetch branch with `offline=true` — full
+      # offline coverage of every workflow while online audits pause — then revert once wave/prd
+      # is reachable again. The merge path already depends on Doppler either way: the
+      # wave-sec-gate check on every PR sources the same PAT from the same config.
+      - name: Audit workflows (PAT fetched in-process, masked, never persisted)
         env:
-          GH_TOKEN: ${{ github.token }} # enables online audits (known-vulnerable actions via GHSA)
-        run: zizmor .github/workflows/
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+        run: |
+          offline=false
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            if [ ! -f .github/workflows/wave-sec-gate.yml ]; then
+              echo "::notice::DOPPLER_TOKEN unavailable (public mirror) — auditing with the repo-scoped github.token"
+            elif [ "${IS_FORK_PR:-}" = "true" ]; then
+              echo "::notice::DOPPLER_TOKEN unavailable (fork PR) — github.token cannot read the private sibling in wave-sec-gate.yml, so online audits are skipped"
+              offline=true
+            else
+              echo "::error::DOPPLER_TOKEN is unset on a trusted trigger (${GITHUB_EVENT_NAME}) — the org secret is missing/renamed/unpropagated, not a fork PR. Refusing to pass green with online audits skipped."
+              exit 1
+            fi
+          else
+            token="$(doppler secrets get GH_PAT_WORKFLOW --project wave --config prd --plain)"
+            if [ -z "$token" ]; then
+              echo "::error::Doppler returned an empty GH_PAT_WORKFLOW — refusing the github.token fallback (it would die FATAL on the private-sibling online audit, see header)."
+              exit 1
+            fi
+            echo "::add-mask::$token"
+            export GH_TOKEN="$token"
+            unset token
+          fi
+          unset DOPPLER_TOKEN
+          if [ "$offline" = "true" ]; then
+            zizmor --no-online-audits .github/workflows/
+          else
+            zizmor .github/workflows/
+          fi
