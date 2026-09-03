@@ -34,7 +34,7 @@ WCAG vs `--bg #0b0f14`. All values verified by `staging/golden-paths-scaffolds/n
 |---|--------|----:|:-----------------:|:-----:|:----------------:|:-----:|------------------|
 | 1 | AI / routing / inference | 171 | `#16d6aa` | 10.2:1 | `#14b28d` | 7.1:1 | **dispatch**, cortex, studio-ai, voice |
 | 2 | streaming / transport | 195 | `#00d4d5` | 10.4:1 | `#00b0b1` | 7.2:1 | pipeline, moq, srt, broadcast |
-| 3 | developer / API / SDK | 220 | `#00ccf9` | 10.1:1 | `#00aacf` | 7.0:1 | sdk-api, api, cli, adk, mcp, workflow |
+| 3 | developer / API / SDK | 220 | `#21BCE7` | 10.1:1 | `#00aacf` | 7.0:1 | sdk-api, api, cli, adk, mcp, workflow |
 | 4 | infrastructure / edge | 250 | `#65bdff` | 9.4:1 | `#549de5` | 6.7:1 | fleet, mesh, edge, runtime |
 | 5 | production / studio | 280 | `#a5abff` | 9.0:1 | `#898ee7` | 6.5:1 | studio, autopilot, editor |
 | 6 | collaboration | 305 | `#ce9dff` | 9.1:1 | `#ab82d8` | 6.3:1 | connect, campus, academy |
@@ -65,7 +65,7 @@ node validators/contrast.mjs 0.78 0.15 330          # → PASS/FAIL gate
 One row per branded subdomain so two products never share an accent. Add yours when you scaffold.
 
 > **Default accent** (`@wave-av/spoke-chassis` `tokens.css.ts`, #164) = the developer/API blue
-> `oklch(0.78 0.15 220)` → `#00ccf9`. This is the apex (wave.online) + Gateway accent and the value a
+> `oklch(0.74 0.132 223)` → `#21BCE7`. This is the apex (wave.online) + Gateway accent and the value a
 > spoke inherits until it claims its own category accent below.
 
 | Subdomain | Product | Family | OKLCH | hex | Tier |
@@ -79,7 +79,7 @@ One row per branded subdomain so two products never share an accent. Add yours w
 | `srt.wave.online` | SRT | streaming / transport | `oklch(0.68 0.13 195)` | `#00b0b1` | deep |
 | `omt.wave.online` | OMT | streaming / transport | `oklch(0.68 0.13 207)` | `#00aec1` | deep +12° |
 | `bridge.wave.online` | Bridge (any↔any gateway) | infrastructure / edge | `oklch(0.78 0.15 250)` | `#65bdff` | vivid |
-| `api.wave.online` | Gateway (auth/scope/meter) | developer / API | `oklch(0.78 0.15 220)` | `#00ccf9` | vivid |
+| `api.wave.online` | Gateway (auth/scope/meter) | developer / API | `oklch(0.74 0.132 223)` | `#21BCE7` | vivid |
 | `voice.wave.online` | Voice | communication | `oklch(0.78 0.15 50)` | `#ff9858` | vivid |
 | `phone.wave.online` | Phone | communication | `oklch(0.68 0.13 50)` | `#d77e49` | deep |
 | `captions.wave.online` | Captions | media / content | `oklch(0.68 0.13 330)` | `#c579be` | deep |

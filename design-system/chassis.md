@@ -13,7 +13,7 @@ WAVE gateway (`api.wave.online`); the spoke stays thin and presentational.
 
 > **The design standard is now the apex (wave.online), promoted in #164.** The chassis originated as
 > the terminal-native dispatch portal (mono, centered single card). The apex evolved it into the WAVE
-> marketing design language: humanist sans typography, the gateway-blue accent (`#00ccf9`), a
+> marketing design language: humanist sans typography, the gateway-blue accent (`#21BCE7`), a
 > top-anchored max-1040 column, and a full marketing component set (hero, grid/card, pricing plans,
 > pill rows, a touch product rail, a CTA block, and verbatim legal/long-form body). `code`/`pre`
 > remain monospace. That apex look now lives in `chassis.css.ts` and is what every spoke inherits.
