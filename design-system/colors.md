@@ -53,7 +53,6 @@ as the design standard.)
 |---------|------|--------|
 | Dispatch (AI / routing anchor) | `dispatch.md` | Teal `oklch(0.78 0.15 171)` → favicon `#16d6aa` |
 | Every other subdomain | `accent-wheel.md` | One per category hue-family (~52 accents) |
-| BurnRate | `burnrate.md` | Red/amber/green tier system |
 
 ## OKLCH syntax reminder
 

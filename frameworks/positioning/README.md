@@ -8,24 +8,41 @@ This framework owns **identity, narrative, and the canonical strings**. It sits 
 | Framework | Owns | The question it answers |
 |---|---|---|
 | **positioning** (this) | identity · narrative · canonical strings · engine/product naming | **What is WAVE?** |
-| [copywriting](../copywriting/voice-and-tone.md) | voice · tone · human/agent register | **How do we say it?** |
+| [copywriting](../copywriting/voice-and-tone.md) | voice · tone · person/agent register | **How do we say it?** |
 | [copywriting/claims](../copywriting/claims.ts) | substantiated / inProgress / required | **What may we assert?** |
 
-## The locked positioning (Jake, 2026-06-06)
+## The locked positioning (Jake, 2026-06-06; re-framed 2026-09-02)
 
-> **WAVE is video infrastructure for the agentic internet** — an open protocol and one API for live
-> and on-demand video, built for the people who make it and the agents that pay for it.
+> **WAVE is media infrastructure for the agentic internet:** one call shape moves live and on-demand
+> media across every transport, and both kinds of user, people and agents, discover it, call it, and
+> pay for it per call.
 
-- **Video is the identity.** Agent-native payments are the **differentiator**, never the headline.
+- **Media infrastructure is the identity.** Four facts carry it (`POSITIONING.frame`): two kinds of
+  user · one call shape across every transport · paid per call by either kind · discoverable by agents
+  (MCP, agent card, skills index). Agent-native access and payment is the **differentiator**, never the
+  headline.
+- **Capabilities live inside the frame.** "Video API", "transcription API", "streaming platform" are
+  what a caller does with WAVE; they are listed beneath the identity and never promoted to it. The
+  gate flags `WAVE is a video API` and the superseded `video infrastructure for the agentic internet`.
+- **Counts come from the skills index.** `POSITIONING.discovery.counts` is measured from
+  `gateway.wave.online/.well-known/wave-skills.json` and dated; re-measure before citing.
+- **Truth law binds every string.** No SOC 2 claim for WAVE itself (vendors attributed); no "first on
+  x402"; the legal entity is exactly `WAVE Online, LLC`; say "person", never "human".
 - **"Agent money OS"** is a lowercase descriptor for the payment *engine* — **never the brand noun**.
   (This corrects the #627 over-rotation that made the OS the tagline.)
-- **Naming, locked:** `WAVE Media Engine ⟷ WAVE Money Engine ⟷ WAVE Wallet`
-  · `money-engine.wave.online` (marketing) · `wallet.wave.online` (product, **planned** — not yet shipped).
+- **Naming, locked:** `WAVE Media Engine ⟷ WAVE Money Engine ⟷ WAVE Dispatch Engine` + `WAVE Wallet`
+  · `money-engine.wave.online` (marketing) · `dispatch.wave.online` (live, priced per decision)
+  · `wallet.wave.online` (product, **planned** — not yet shipped).
+- **The engine rule:** a pillar is billed as an *engine* when it has a live product surface, an apex
+  page, and a priced capability (a meter family at the gateway). Media, Money, Dispatch clear all three.
+  **Trust** (`wave.online/trust` + `trust.wave.online`, machine-readable) clears two and has no meter, so
+  it is a *pillar* beside the engines. **Agents** are an *audience*, never a pillar.
 
 ## Files
 
-- **`positioning.ts`** — the machine-readable SSOT. Identity, tagline, analogy, engine/product naming,
-  audiences, elevator pitches, and the FORBIDDEN-phrase list. **Surfaces should import these strings**
+- **`positioning.ts`** — the machine-readable SSOT. Identity, tagline, analogy, the four-fact frame,
+  capabilities-inside-the-frame, engine/product naming, agent-discovery surfaces and dated counts,
+  audiences and per-audience lines, elevator pitches, and the FORBIDDEN-phrase list. **Surfaces should import these strings**
   (via `@wave-av/messaging`, task #138) rather than re-type them, so the story can't drift.
 - **`narrative.md`** — the long-form platform story (the source for the public `/story` surface, #140).
 - **`positioning-check.sh`** — the drift gate. Flags positioning-breaking copy (e.g. "The Agent Money
@@ -51,7 +68,7 @@ Exit 1 on any ERROR-severity drift; WARN prints but does not fail.
 1. **Import, don't re-type.** Pull `POSITIONING.tagline`, `.pitches.short`, `.engines.money.name`, etc.
    from the canonical strings (`@wave-av/messaging` re-exports `positioning.ts`).
 2. **Stay inside the identity.** If a page's headline contradicts `POSITIONING.identity`, the page is
-   wrong. Video primary; payments differentiate.
+   wrong. Media infrastructure primary; capabilities beneath; payments differentiate.
 3. **The gate backs it.** `positioning-check.sh` (twin of the copywriting gate) fails CI on drift, so
    the SSOT is enforced, not merely documented.
 
