@@ -1,0 +1,16 @@
+.github/workflows/pr-agent.yml
+  h_af5ac1a9798224 1-342
+.github/workflows/scorecard.yml
+  h_af5ac1a9798224 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "70eb965f22f73a81cd93cdc6ffc29ade47b3bbca",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
