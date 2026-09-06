@@ -128,5 +128,16 @@ rules:
     # desync/freeze them. First-party (this repo), not a third-party supply-chain dependency, so
     # the unpinned-uses threat does not apply. (@main is required: a reusable runs in the caller's
     # checkout and foundation is private.) Authorized by Jake (Option A).
+    #
+    # reusable-funnel-gate.yml references the FIRST-PARTY, same-repo composite action
+    # wave-av/wave-foundation/.github/actions/funnel-check by @main — identical pattern and identical
+    # rationale to the chassis-gate entry above (self-ref must track main; SHA-pinning would
+    # desync/freeze callers; first-party, not third-party supply chain).
+    #
+    # reusable-test-integrity-gate.yml references the FIRST-PARTY, same-repo composite action
+    # wave-av/wave-foundation/.github/actions/test-integrity-check by @main — same pattern, same
+    # rationale as the two entries above.
     ignore:
       - reusable-chassis-gate.yml
+      - reusable-funnel-gate.yml
+      - reusable-test-integrity-gate.yml
