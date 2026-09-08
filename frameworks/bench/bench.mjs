@@ -95,9 +95,9 @@ const decodeEntities = (s) =>
   s.replace(/&#0?39;|&#x27;/gi, "'").replace(/&quot;|&#0?34;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&hellip;|&#8230;/gi, "…").replace(/&amp;/gi, "&");
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
-function visibleText(h) {
+export function visibleText(h) {
   return h
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ") // </script foo="bar">, </script >-tolerant (js/bad-tag-filter)
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
@@ -295,4 +295,4 @@ async function main() {
   }
   process.exit(ok ? 0 : 1);
 }
-main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
