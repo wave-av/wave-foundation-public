@@ -6,8 +6,10 @@
 // blind to this — the defect class this alert names) MUST be excluded, and a plain lowercase
 // `<script>...</script>` MUST also be excluded, while ordinary prose around them MUST survive.
 // This test is written to FAIL against the pre-fix regex-only implementation and PASS against the
-// post-fix enumerate-then-locate implementation (verified below by re-running it against the old
-// regex directly — see the "old implementation" test).
+// post-fix enumerate-then-locate implementation (verified in the PR diff history, not reproduced
+// here: re-vendoring the flagged pre-fix regex as live code — even inside a test — recreates the
+// exact js/bad-tag-filter pattern CodeQL flags, so the discrimination proof lives in review, not
+// in this file).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { visibleText } from "./bench.mjs";
@@ -70,24 +72,10 @@ test("an unclosed <script> consumes to EOF rather than leaking its body (js/bad-
   assert.doesNotMatch(out, /doNotShipThis/);
 });
 
-// This drill proves the positive control is discriminating: re-running it against the OLD
-// (pre-fix) implementation must FAIL, so the new test cannot pass against both versions of the
-// code and prove nothing. The old regex is reproduced verbatim from the dismissed/flagged code
-// (not re-derived), exercised the same way visibleText() called it.
-test("old implementation: the naive case-insensitive-but-whitespace-fragile regex still passes the uppercase control (expected — /gi already covered case) but FAILS the malformed-close control", () => {
-  const oldVisibleText = (h) =>
-    h
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  // The malformed-close case is where the OLD implementation actually breaks: the non-greedy span
-  // can't find its literal `<\/script>` at the whitespace-padded close, so it keeps searching and
-  // either leaks the payload or over-consumes trailing content.
-  const html = "<p>before</p><script>leakedPayload()</script ><p>after</p>";
-  const out = oldVisibleText(html);
-  assert.match(out, /leakedPayload/, "old implementation leaks the payload past a malformed close tag — this is the bug");
-});
+// Note: an earlier revision of this test file re-vendored the flagged pre-fix regex here as a
+// "control" to prove the tests above are discriminating (fail on old code, pass on new). CodeQL
+// correctly flagged that as a new js/bad-tag-filter instance: reproducing incomplete tag-stripping
+// regex as live, matchable code is the defect class, regardless of whether it is reachable from
+// untrusted input. The discrimination proof now lives in code review / PR history instead of as
+// checked-in source: the "malformed close tag" test above is the one that actually exercises the
+// fix, and it was confirmed against the pre-fix implementation before this file was committed.
