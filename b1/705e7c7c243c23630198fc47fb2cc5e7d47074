@@ -1,0 +1,29 @@
+frameworks/bench/bench.mjs
+  s_279e447c87638f::t_141abf4572644e 98-103
+frameworks/bench/bench.test.mjs
+  s_1a690ce41414b6::t_127b2fd121b12b 34-36,52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b1705e7c7c243c23630198fc47fb2cc5e7d47074",
+  "prompts": {},
+  "sessions": {
+    "s_1a690ce41414b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9e0696cf6b703417",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
+    "s_279e447c87638f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a271276d615d18b19",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
