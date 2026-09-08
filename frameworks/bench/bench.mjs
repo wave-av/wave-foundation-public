@@ -95,25 +95,55 @@ const decodeEntities = (s) =>
   s.replace(/&#0?39;|&#x27;/gi, "'").replace(/&quot;|&#0?34;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&hellip;|&#8230;/gi, "…").replace(/&amp;/gi, "&");
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
-function visibleText(h) {
-  return h
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, " ")
+// Excise every <tag ...>...</tag> block (case-insensitive). Fixes CodeQL js/bad-tag-filter's four
+// facets vs. the old `/<tag[\s\S]*?<\/tag>/` family: (1) `\b` on the OPEN tag so `<scripter>` is never
+// misread as `<script>`; (2)/(3) the CLOSE tag is `<\/tag\b[^>]*>` — attribute- and whitespace-tolerant
+// (`</script foo="bar">`, `</script >`), not a rigid literal `<\/tag>`; (4) an unclosed open tag FAILS
+// CLOSED — it consumes to end-of-string instead of leaking every byte after it. Each excised block
+// (or block-with-no-close) collapses to a single space, matching the old "replace the block with one
+// space" contract so downstream `\s+` collapsing still behaves.
+function stripTagBlocks(html, tag) {
+  const open = new RegExp(`<${tag}\\b[^>]*>`, "gi");
+  const close = new RegExp(`<\\/${tag}\\b[^>]*>`, "i");
+  let out = "";
+  let cursor = 0;
+  let m;
+  while ((m = open.exec(html))) {
+    if (m.index < cursor) { open.lastIndex = cursor; continue; }
+    out += html.slice(cursor, m.index) + " ";
+    const tail = html.slice(m.index + m[0].length);
+    const end = tail.match(close);
+    cursor = end ? m.index + m[0].length + end.index + end[0].length : html.length;
+    open.lastIndex = cursor;
+  }
+  return out + html.slice(cursor);
+}
+export function visibleText(h) {
+  let out = stripTagBlocks(h, "script");
+  out = stripTagBlocks(out, "style");
+  for (const tag of ["nav", "footer", "header"]) out = stripTagBlocks(out, tag);
+  return out
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
-function jsonLd(h) {
+export function jsonLd(h) {
   const out = [];
-  for (const m of h.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+  const open = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>/gi;
+  const close = /<\/script\b[^>]*>/i;
+  let m;
+  while ((m = open.exec(h))) {
+    const tail = h.slice(m.index + m[0].length);
+    const end = tail.match(close);
+    const body = end ? tail.slice(0, end.index) : tail;
     try {
-      const v = JSON.parse(m[1].trim());
+      const v = JSON.parse(body.trim());
       const nodes = Array.isArray(v) ? v : v["@graph"] && Array.isArray(v["@graph"]) ? v["@graph"] : [v];
       out.push(...nodes);
     } catch {
       /* a malformed block is reported by the jsonld-valid check */
     }
+    open.lastIndex = m.index + m[0].length + (end ? end.index + end[0].length : tail.length);
   }
   return out;
 }
@@ -295,4 +325,6 @@ async function main() {
   }
   process.exit(ok ? 0 : 1);
 }
-main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
+}
