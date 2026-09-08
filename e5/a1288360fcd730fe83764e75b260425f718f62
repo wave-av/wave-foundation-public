@@ -1,0 +1,24 @@
+frameworks/bench/bench.mjs
+  s_4657dee555390b::t_22456596ef25b0 298
+  s_4657dee555390b::t_8125bea9d3a2b6 98
+  s_4657dee555390b::t_f5b98b87b4510c 100
+frameworks/bench/bench.test.mjs
+  s_4657dee555390b::t_6f8c229b65bcba 2-3,6
+  s_4657dee555390b::t_79d5e6f29f5bcb 1,4-5,7-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e5a1288360fcd730fe83764e75b260425f718f62",
+  "prompts": {},
+  "sessions": {
+    "s_4657dee555390b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c714314b-1edf-4e54-a112-2a97f2377df1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
