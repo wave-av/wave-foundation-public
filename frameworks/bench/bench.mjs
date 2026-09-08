@@ -95,48 +95,55 @@ const decodeEntities = (s) =>
   s.replace(/&#0?39;|&#x27;/gi, "'").replace(/&quot;|&#0?34;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&hellip;|&#8230;/gi, "…").replace(/&amp;/gi, "&");
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
-// js/bad-tag-filter fix: a single non-greedy open-to-close regex can be fooled by close-tag
-// syntax that HTML accepts as valid but a literal closing pattern does not match (extra
-// whitespace or attributes before the closing angle bracket are the two facets this class
-// covers). Enumerate instead: find each open tag, then locate its matching close tag
-// separately with a close pattern that tolerates that same class of variation. Fixed regex
-// literals only — no dynamic RegExp.
-const SCRIPT_OPEN_RE = /<script\b[^>]*>/gi;
-const SCRIPT_CLOSE_RE = /<\/script\b[^>]*>/gi;
-const STYLE_OPEN_RE = /<style\b[^>]*>/gi;
-const STYLE_CLOSE_RE = /<\/style\b[^>]*>/gi;
-function stripTagBlocks(h, openRe, closeRe) {
+// Excise every <tag ...>...</tag> block (case-insensitive). Fixes CodeQL js/bad-tag-filter's four
+// facets vs. the old `/<tag[\s\S]*?<\/tag>/` family: (1) `\b` on the OPEN tag so `<scripter>` is never
+// misread as `<script>`; (2)/(3) the CLOSE tag is `<\/tag\b[^>]*>` — attribute- and whitespace-tolerant
+// (`</script foo="bar">`, `</script >`), not a rigid literal `<\/tag>`; (4) an unclosed open tag FAILS
+// CLOSED — it consumes to end-of-string instead of leaking every byte after it. Each excised block
+// (or block-with-no-close) collapses to a single space, matching the old "replace the block with one
+// space" contract so downstream `\s+` collapsing still behaves.
+function stripTagBlocks(html, tag) {
+  const open = new RegExp(`<${tag}\\b[^>]*>`, "gi");
+  const close = new RegExp(`<\\/${tag}\\b[^>]*>`, "i");
   let out = "";
   let cursor = 0;
-  openRe.lastIndex = 0;
-  let open;
-  while ((open = openRe.exec(h))) {
-    out += h.slice(cursor, open.index) + " "; // same replacement shape as the old regex: one space per dropped block
-    closeRe.lastIndex = openRe.lastIndex;
-    const close = closeRe.exec(h);
-    if (!close) { cursor = h.length; break; } // unterminated block: drop the remainder rather than leak it back
-    cursor = close.index + close[0].length;
-    openRe.lastIndex = cursor;
+  let m;
+  while ((m = open.exec(html))) {
+    if (m.index < cursor) { open.lastIndex = cursor; continue; }
+    out += html.slice(cursor, m.index) + " ";
+    const tail = html.slice(m.index + m[0].length);
+    const end = tail.match(close);
+    cursor = end ? m.index + m[0].length + end.index + end[0].length : html.length;
+    open.lastIndex = cursor;
   }
-  return out + h.slice(cursor);
+  return out + html.slice(cursor);
 }
 export function visibleText(h) {
-  return stripTagBlocks(stripTagBlocks(h, SCRIPT_OPEN_RE, SCRIPT_CLOSE_RE), STYLE_OPEN_RE, STYLE_CLOSE_RE)
-    .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, " ")
+  let out = stripTagBlocks(h, "script");
+  out = stripTagBlocks(out, "style");
+  for (const tag of ["nav", "footer", "header"]) out = stripTagBlocks(out, tag);
+  return out
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
-function jsonLd(h) {
+export function jsonLd(h) {
   const out = [];
-  for (const m of h.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+  const open = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>/gi;
+  const close = /<\/script\b[^>]*>/i;
+  let m;
+  while ((m = open.exec(h))) {
+    const tail = h.slice(m.index + m[0].length);
+    const end = tail.match(close);
+    const body = end ? tail.slice(0, end.index) : tail;
     try {
-      const v = JSON.parse(m[1].trim());
+      const v = JSON.parse(body.trim());
       const nodes = Array.isArray(v) ? v : v["@graph"] && Array.isArray(v["@graph"]) ? v["@graph"] : [v];
       out.push(...nodes);
     } catch {
       /* a malformed block is reported by the jsonld-valid check */
     }
+    open.lastIndex = m.index + m[0].length + (end ? end.index + end[0].length : tail.length);
   }
   return out;
 }
@@ -318,8 +325,6 @@ async function main() {
   }
   process.exit(ok ? 0 : 1);
 }
-// CLI only — an importing test file (`../bench.test.mjs`, importing `visibleText`) must not trigger
-// a live network run. Same guard shape as frameworks/verify-loop/verify-loop.mjs.
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
 }
