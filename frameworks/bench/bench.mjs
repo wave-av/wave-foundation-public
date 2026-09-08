@@ -95,12 +95,12 @@ const decodeEntities = (s) =>
   s.replace(/&#0?39;|&#x27;/gi, "'").replace(/&quot;|&#0?34;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&hellip;|&#8230;/gi, "…").replace(/&amp;/gi, "&");
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
-// js/bad-tag-filter fix: one non-greedy open-to-close regex is fooled by a malformed close
-// (`</script >` and `</script foo="bar">` are both valid HTML but neither matches a literal
-// `<\/script>`). Enumerate instead (PR #491 shape): find each open tag, then locate its matching
-// close tag separately with a pattern that tolerates BOTH whitespace and attributes on the close
-// tag (same union arrived at independently in wave-foundation#1477 for the sibling
-// check-copy-grammar.mjs). Fixed regex literals only — no dynamic RegExp.
+// js/bad-tag-filter fix: a single non-greedy open-to-close regex can be fooled by close-tag
+// syntax that HTML accepts as valid but a literal closing pattern does not match (extra
+// whitespace or attributes before the closing angle bracket are the two facets this class
+// covers). Enumerate instead: find each open tag, then locate its matching close tag
+// separately with a close pattern that tolerates that same class of variation. Fixed regex
+// literals only — no dynamic RegExp.
 const SCRIPT_OPEN_RE = /<script\b[^>]*>/gi;
 const SCRIPT_CLOSE_RE = /<\/script\b[^>]*>/gi;
 const STYLE_OPEN_RE = /<style\b[^>]*>/gi;

@@ -31,9 +31,9 @@ test("positive control: an uppercase <SCRIPT SRC=...> block is excluded (case-in
 });
 
 test("malformed close tag (whitespace before '>') does not leak content past it", () => {
-  // `</script >` and `</SCRIPT\n>` are both valid HTML; a literal `<\/script>` regex does not
-  // match either, so the old single-regex implementation runs past this boundary looking for the
-  // next literal occurrence. The fix must not do that.
+  // Whitespace directly before the closing angle bracket of a close tag is valid HTML that a
+  // literal close-tag regex does not match, so the old single-regex implementation ran past this
+  // boundary looking for the next literal occurrence. The fix must not do that (fixture below).
   const html = "<p>before</p><script>leakedPayload()</script ><p>after</p>";
   const out = visibleText(html);
   assert.doesNotMatch(out, /leakedPayload/);
@@ -49,8 +49,8 @@ test("style blocks are stripped the same way, case-insensitively", () => {
 });
 
 test("close tag with attributes is still matched (js/bad-tag-filter union facet: attributes on close)", () => {
-  // `</script foo="bar">` is a parser-error close tag browsers still accept. A close pattern that
-  // only tolerates whitespace (e.g. /<\/script\s*>/) rejects this and leaks the payload.
+  // A close tag carrying attributes is a parser-error close browsers still accept. A close
+  // pattern that only tolerates whitespace rejects this and leaks the payload (fixture below).
   const html = '<p>before</p><script>leakedPayload()</script foo="bar"><p>after</p>';
   const out = visibleText(html);
   assert.doesNotMatch(out, /leakedPayload/);
