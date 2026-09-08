@@ -46,6 +46,30 @@ test("style blocks are stripped the same way, case-insensitively", () => {
   assert.doesNotMatch(out, /color:red/);
 });
 
+test("close tag with attributes is still matched (js/bad-tag-filter union facet: attributes on close)", () => {
+  // `</script foo="bar">` is a parser-error close tag browsers still accept. A close pattern that
+  // only tolerates whitespace (e.g. /<\/script\s*>/) rejects this and leaks the payload.
+  const html = '<p>before</p><script>leakedPayload()</script foo="bar"><p>after</p>';
+  const out = visibleText(html);
+  assert.doesNotMatch(out, /leakedPayload/);
+  assert.match(out, /after/);
+});
+
+test("<scripter> is not treated as a <script> opener (js/bad-tag-filter union facet: \\b on open tag)", () => {
+  const html = "<p>before</p><scripter>ordinary prose, not a script</scripter><p>after</p>";
+  const out = visibleText(html);
+  assert.match(out, /ordinary prose/, "a <scripter> tag must not be mistaken for a <script> opener");
+  assert.match(out, /before/);
+  assert.match(out, /after/);
+});
+
+test("an unclosed <script> consumes to EOF rather than leaking its body (js/bad-tag-filter union facet: unclosed tag)", () => {
+  const html = "<p>before</p><script>doNotShipThis()";
+  const out = visibleText(html);
+  assert.match(out, /before/);
+  assert.doesNotMatch(out, /doNotShipThis/);
+});
+
 // This drill proves the positive control is discriminating: re-running it against the OLD
 // (pre-fix) implementation must FAIL, so the new test cannot pass against both versions of the
 // code and prove nothing. The old regex is reproduced verbatim from the dismissed/flagged code

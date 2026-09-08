@@ -96,13 +96,15 @@ const decodeEntities = (s) =>
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
 // js/bad-tag-filter fix: one non-greedy open-to-close regex is fooled by a malformed close
-// (`</script >` is valid HTML but won't match a literal `<\/script>`). Enumerate instead (PR #491
-// shape): find each open tag, then locate its matching close tag separately. Fixed regex literals
-// only — no dynamic RegExp.
+// (`</script >` and `</script foo="bar">` are both valid HTML but neither matches a literal
+// `<\/script>`). Enumerate instead (PR #491 shape): find each open tag, then locate its matching
+// close tag separately with a pattern that tolerates BOTH whitespace and attributes on the close
+// tag (same union arrived at independently in wave-foundation#1477 for the sibling
+// check-copy-grammar.mjs). Fixed regex literals only — no dynamic RegExp.
 const SCRIPT_OPEN_RE = /<script\b[^>]*>/gi;
-const SCRIPT_CLOSE_RE = /<\/script\s*>/gi;
+const SCRIPT_CLOSE_RE = /<\/script\b[^>]*>/gi;
 const STYLE_OPEN_RE = /<style\b[^>]*>/gi;
-const STYLE_CLOSE_RE = /<\/style\s*>/gi;
+const STYLE_CLOSE_RE = /<\/style\b[^>]*>/gi;
 function stripTagBlocks(h, openRe, closeRe) {
   let out = "";
   let cursor = 0;
