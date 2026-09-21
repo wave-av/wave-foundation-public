@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
 # Agent grounding — emit a one-page summary of the current platform from state.json.
 #
-# Read state.json from wave-foundation@v1 (or a local path) and produce a
-# short markdown briefing for Claude / agent sessions to read on start.
+# Read state.json from an EXPLICIT source — a local path or a URL you supply — and
+# produce a short markdown briefing for Claude / agent sessions to read on start.
 # The output is designed to be injected into the session context (e.g. via
 # Claude Code's `SessionStart` hook or an `AGENTS.md` include).
 #
+# There is deliberately NO built-in default source. The registry's state.json is
+# generated inside a repo that a public consumer cannot read, so a baked-in URL
+# would 404 in every consumer environment while looking perfectly fine in CI. The
+# script now refuses to guess and tells you what to pass instead.
+#
 # Usage:
-#   bash ground-agent.sh                              # fetch state.json from foundation@v1
-#   bash ground-agent.sh --state path/to/state.json   # use local file
+#   bash ground-agent.sh --state path/to/state.json   # read a local snapshot
+#   WAVE_PLATFORM_STATE_URL=<url> bash ground-agent.sh  # fetch a published snapshot
 #   bash ground-agent.sh --json                       # emit raw JSON instead of markdown
 #
 # Output goes to stdout; redirect to wherever your session-start hook reads from.
 
 set -euo pipefail
 
-STATE_URL_DEFAULT="https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/state.json"
+# Optional published-snapshot URL. Empty unless the caller sets it — see header.
+STATE_URL="${WAVE_PLATFORM_STATE_URL:-}"
 JSON_OUT=false
 STATE_PATH=""
 
@@ -32,13 +38,32 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -n "$STATE_PATH" ]; then
+  SOURCE_DESC="$STATE_PATH"
   raw=$(cat "$STATE_PATH")
-else
-  raw=$(curl -sSfL "$STATE_URL_DEFAULT" 2>/dev/null || true)
-  if [ -z "$raw" ]; then
-    echo "::error::could not fetch $STATE_URL_DEFAULT — pass --state <path> to use a local snapshot" >&2
+elif [ -n "$STATE_URL" ]; then
+  SOURCE_DESC="$STATE_URL"
+  # curl's stderr is NOT redirected to /dev/null: a failed grounding fetch must be
+  # readable, not swallowed. `|| { ... }` rather than `|| true` so a non-2xx/network
+  # failure ends the run instead of silently producing an empty briefing.
+  if ! raw=$(curl -sSfL "$STATE_URL"); then
+    echo "ground-agent: could not fetch state.json from \$WAVE_PLATFORM_STATE_URL ($STATE_URL)" >&2
+    echo "  fix: check the URL is reachable from here, or pass --state <path/to/state.json> to read a local snapshot" >&2
     exit 1
   fi
+  if [ -z "$raw" ]; then
+    echo "ground-agent: \$WAVE_PLATFORM_STATE_URL ($STATE_URL) returned an empty body — refusing to ground an agent on nothing" >&2
+    echo "  fix: verify the URL serves the raw state.json, or pass --state <path/to/state.json>" >&2
+    exit 1
+  fi
+else
+  # Fail LOUD and explicit. The previous behaviour here was a hardcoded fetch from a
+  # repo a public consumer cannot read: green in CI, 404 at run time, and the error
+  # was routed to /dev/null. Refusing to guess is the correct failure contract for a
+  # grounding script — a wrong or empty briefing is worse than no briefing.
+  echo "ground-agent: no state.json source configured — refusing to guess." >&2
+  echo "  fix: pass --state <path/to/state.json> to read a local snapshot," >&2
+  echo "       or set WAVE_PLATFORM_STATE_URL=<url> to fetch a published one." >&2
+  exit 2
 fi
 
 if [ "$JSON_OUT" = "true" ]; then
@@ -56,7 +81,7 @@ total = len(caps)
 
 print(f"# WAVE platform state (loaded for agent grounding)")
 print()
-print(f"_Source:_ \`wave-foundation/frameworks/platform-registry/state.json\` (content last changed {gen_at})")
+print(f"_Source:_ \`$SOURCE_DESC\` (content last changed {gen_at})")
 print(f"_Repos:_ {total}")
 print()
 print("## Grounding rules (Rule 1: read this before claiming any WAVE capability exists)")

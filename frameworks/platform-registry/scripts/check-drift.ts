@@ -26,8 +26,11 @@
  *     --check-cross-refs \
  *     [--state-json <path>]
  *
- * The state.json defaults to fetching from wave-foundation@v1; pass an explicit
- * path when running inside foundation itself.
+ * There is no built-in default state.json source: pass `--state-json <path>` for a
+ * local snapshot, or set `WAVE_PLATFORM_STATE_URL=<url>` to fetch a published one.
+ * A hardcoded URL used to live here, pointing into a repo a public consumer cannot
+ * read — green in CI, HTTP 404 at run time. `--check-cross-refs` now reports a
+ * drift error naming the missing configuration rather than a confusing fetch failure.
  */
 
 import { promises as fs } from 'node:fs';
@@ -190,14 +193,37 @@ async function checkCrossRefs(caps: Capabilities, statePath?: string): Promise<D
   if (statePath) {
     state = JSON.parse(await fs.readFile(statePath, 'utf8')) as RegistryState;
   } else {
-    // Fetch from foundation @v1.
-    const url = 'https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/state.json';
-    const res = await fetch(url);
+    // No hardcoded fallback URL. The previous one pointed into a repo a public
+    // consumer cannot read, so it returned 404 at run time in every consumer
+    // environment while CI stayed green. The source is caller-supplied, and its
+    // absence is reported as a drift error (exit 1) rather than guessed at.
+    const url = process.env.WAVE_PLATFORM_STATE_URL;
+    if (!url) {
+      out.push({
+        rule: 'cross-refs',
+        detail:
+          'no state.json source configured: --state-json was not passed and $WAVE_PLATFORM_STATE_URL is unset',
+        fix: 'pass --state-json <path> to read a local snapshot, or set WAVE_PLATFORM_STATE_URL=<url> to fetch a published one',
+      });
+      return out;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch (err) {
+      out.push({
+        rule: 'cross-refs',
+        detail: `fetching state.json from $WAVE_PLATFORM_STATE_URL (${url}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        fix: 'check the URL is reachable from here, or pass --state-json <path> to read a local snapshot',
+      });
+      return out;
+    }
     if (!res.ok) {
       out.push({
         rule: 'cross-refs',
         detail: `couldn't fetch state.json from ${url} (HTTP ${res.status})`,
-        fix: 'pass --state-json or wait for foundation aggregator to publish state.json',
+        fix: 'check the URL serves the raw state.json, or pass --state-json <path> to read a local snapshot',
       });
       return out;
     }
