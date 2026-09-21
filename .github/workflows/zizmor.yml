@@ -4,6 +4,18 @@ name: zizmor (Actions security)
 # checks, credential persistence, over-broad tokens). Run as a CLI gate (fails on findings) —
 # no SARIF/code-scanning upload, which isn't available on private repos without Advanced Security.
 # Accepted by-design findings are suppressed in .github/zizmor.yml (auto-discovered).
+#
+# STATUS NOTE (2026-09-21): every run of this job has been failing WITHOUT EXECUTING since
+# 2026-09-20T06:28Z — annotation "The job was not started because your account is locked due to
+# a billing issue." The org's Actions spending cap denies runners to ubuntu-latest (GitHub-hosted)
+# jobs, including on this public repo (see PR #98's two-layer writeup: job-level starvation here,
+# vs. the run-level startup_failure private repos hit). Not a defect: the same logic ran green
+# repeatedly through 2026-09-08T23:37Z. PR #98 deliberately left this job on ubuntu-latest rather
+# than Blacksmith — it reads secrets.DOPPLER_TOKEN, a production secret, and the runner rule below
+# (rules/workflow-authoring.md) is explicit and non-negotiable on that point. Don't attribute a
+# new failure to this file without first re-running PAST the cap: `gh pr update-branch` or a
+# fresh push, never `gh run rerun` (it replays the old workflow definition and proves nothing
+# about a file change).
 
 on:
   push:

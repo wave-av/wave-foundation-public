@@ -3,6 +3,20 @@ name: governance-enforce
 # A_BLOCK gate: no-secrets-in-git / secrets-from-doppler / no-hardcoded-paths, enforced on the
 # PR diff via the @wave-av/governance package. Diff-scoped: blocks NEW violations only.
 # Actions SHA-pinned (pinact/zizmor): tags kept in trailing comments.
+#
+# STATUS NOTE (2026-09-21): every run of this job has been failing WITHOUT EXECUTING since
+# 2026-09-20T06:28Z — annotation "The job was not started because your account is locked due to
+# a billing issue." This job runs on ubuntu-latest (GitHub-hosted), and the org's Actions
+# spending cap denies runners to ubuntu-latest jobs, including on this public repo (job-level
+# starvation — distinct from the run-level `startup_failure` that private repos see; see PR #98's
+# two-layer writeup). It is NOT a defect in this workflow: the exact same logic ran green
+# repeatedly through 2026-09-08T23:37Z. PR #98 deliberately left this job on ubuntu-latest rather
+# than moving it to Blacksmith, because it sets NODE_AUTH_TOKEN from secrets.GITHUB_TOKEN and
+# self-check.yml (the only other blacksmith-hosted workflow here) references no secrets at all —
+# no in-repo precedent for a secret-bearing job on a third-party runner, so it was treated
+# conservatively. That call is not superseded here. Don't attribute a new failure to this file
+# without first re-running PAST the cap: `gh pr update-branch` or a fresh push, never
+# `gh run rerun` (it replays the old workflow definition and proves nothing about a file change).
 
 on:
   pull_request:
