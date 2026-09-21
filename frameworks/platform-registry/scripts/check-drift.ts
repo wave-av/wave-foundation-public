@@ -31,6 +31,7 @@
  * A hardcoded URL used to live here, pointing into a repo a public consumer cannot
  * read — green in CI, HTTP 404 at run time. `--check-cross-refs` now reports a
  * drift error naming the missing configuration rather than a confusing fetch failure.
+ * Choosing a publicly-resolvable source for state.json is tracked in #102.
  */
 
 import { promises as fs } from 'node:fs';

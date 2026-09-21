@@ -9,7 +9,8 @@
 # There is deliberately NO built-in default source. The registry's state.json is
 # generated inside a repo that a public consumer cannot read, so a baked-in URL
 # would 404 in every consumer environment while looking perfectly fine in CI. The
-# script now refuses to guess and tells you what to pass instead.
+# script now refuses to guess and tells you what to pass instead. Choosing a
+# publicly-resolvable source for state.json is tracked in #102.
 #
 # Usage:
 #   bash ground-agent.sh --state path/to/state.json   # read a local snapshot
