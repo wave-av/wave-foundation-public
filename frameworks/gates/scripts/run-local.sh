@@ -106,20 +106,31 @@ rsync -a --delete --delete-excluded \
 # Which gates? Read the registry so this can never drift from what CI runs — as `id<TAB>script`,
 # because an id is NOT its filename (see the lib). Named ids on the command line are resolved
 # through the same registry rather than pattern-matched into a path.
-mapfile -t REGISTRY_ROWS < <(waveci_registry_gates) \
+#
+# BASH 3.2 PORTABILITY (#5269): `mapfile` is a bash-4.0+ builtin, absent on the macOS system bash
+# (3.2.57) this script runs under — "mapfile: command not found", exit 127. The existing
+# `|| die_infra` already caught that loud and safe, but the gate could never actually run here.
+# Portable spelling below. Same #944-class caveat as self-check.yml/verify-receipt.sh: this does
+# not regress the mapfile version's exit-status propagation, and `${#GATES[@]}` is still checked
+# before GATES is ever used.
+REGISTRY_ROWS=()
+while IFS= read -r __row; do REGISTRY_ROWS+=("$__row"); done < <(waveci_registry_gates) \
   || die_infra "could not read frameworks/gates/registry.yaml"
+# `"${REGISTRY_ROWS[@]}"` on an EMPTY array is an unbound-variable error under `set -u` in bash
+# 3.2 (fixed in bash 4.4+) — guard both expansions below defensively; an empty registry.yaml is
+# an edge case but must not crash this script instead of the clear die_infra a few lines down.
 GATES=()
 if [ "$#" -gt 0 ]; then
   for want in "$@"; do
     row=""
-    for r in "${REGISTRY_ROWS[@]}"; do
+    for r in ${REGISTRY_ROWS[@]+"${REGISTRY_ROWS[@]}"}; do
       [ "${r%%$'\t'*}" = "$want" ] && { row="$r"; break; }
     done
     [ -n "$row" ] || die_infra "gate '$want' is not a runnable gate in registry.yaml"
     GATES+=("$row")
   done
 else
-  GATES=("${REGISTRY_ROWS[@]}")
+  GATES=(${REGISTRY_ROWS[@]+"${REGISTRY_ROWS[@]}"})
 fi
 [ "${#GATES[@]}" -gt 0 ] || die_infra "no runnable gates found"
 

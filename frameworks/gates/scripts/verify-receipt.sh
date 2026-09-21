@@ -50,7 +50,18 @@ RECEIPT="$(waveci_receipt_dir)/${REPO}-${SHA}.json"
 # Rows are `id<TAB>script` — the registry states the script path and this must not reconstruct it.
 # An id is not its filename: `file-size` -> `check-file-size.sh`. Guessing that mapping is precisely
 # the bug that left run-local.sh's own default invocation broken from the day it shipped.
-mapfile -t REGISTRY_ROWS < <(waveci_registry_gates) || fail "could not read frameworks/gates/registry.yaml"
+# BASH 3.2 PORTABILITY (#5269): `mapfile` is a bash-4.0+ builtin. On the macOS system bash
+# (3.2.57) it does not exist at all — "mapfile: command not found", exit 127 — so the old
+# `mapfile ... || fail` line already failed loud and safe on this host (the explicit `||` catches
+# it), but the gate could never actually RUN here: 0% functional, not silently-passing. Portable
+# spelling: read the enumerator's lines with a `while read` loop. Same caveat as before (#944
+# class, see self-check.yml): a `< <(...)` process substitution's exit status does not propagate
+# through the `while...done` to the trailing `||` if the enumerator wrote at least one line before
+# failing — this fix does not make that worse than the `mapfile` version it replaces, and the very
+# next line's zero-rows check still catches a total/immediate enumerator failure exactly as before.
+REGISTRY_ROWS=()
+while IFS= read -r __row; do REGISTRY_ROWS+=("$__row"); done < <(waveci_registry_gates) \
+  || fail "could not read frameworks/gates/registry.yaml"
 [ "${#REGISTRY_ROWS[@]}" -gt 0 ] || fail "registry declares no runnable gates — refusing to certify"
 
 # Parse and structurally validate in python (stdlib only — no jq dependency on a dev machine). It

@@ -137,7 +137,12 @@ jobs:
           done <<< "${BUILD_ARGS}"
           echo "==> docker build -t ${IMAGE} -f ${df} ${CONTEXT}"
           # A build failure is a COULD-NOT-SCAN, not a finding: we learned nothing about the image.
-          docker build -t "$IMAGE" -f "$df" "${args[@]}" "$CONTEXT" || {
+          # BASH 3.2 PORTABILITY (#5269): args is legitimately empty when the build-args input is
+          # unset -- "${args[@]}" on a ZERO-element array is an unbound-variable error under
+          # set -u in bash below 4.4 (this step has set -euo pipefail, so -u is on). This reusable
+          # workflow's runner is caller-configurable via the runs-on input (default ubuntu-latest),
+          # and a run: block is host-bash shell text regardless of which host -- guard the expansion.
+          docker build -t "$IMAGE" -f "$df" ${args[@]+"${args[@]}"} "$CONTEXT" || {
             echo "::error::COULD-NOT-SCAN: the image failed to build, so nothing was measured."
             exit 2
           }

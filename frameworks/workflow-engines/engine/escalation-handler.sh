@@ -8,12 +8,31 @@
 ESCALATION_LOG="${HOME}/.claude/state/workflows/escalations.jsonl"
 DEFAULT_SEVERITY="medium"
 
-# Severity levels and their channels
-declare -A SEVERITY_CHANNELS
-SEVERITY_CHANNELS["low"]="slack"
-SEVERITY_CHANNELS["medium"]="slack,linear"
-SEVERITY_CHANNELS["high"]="slack,linear,pagerduty"
-SEVERITY_CHANNELS["critical"]="slack,linear,pagerduty"
+# Severity levels and their channels.
+#
+# BASH 3.2 PORTABILITY (#5269): this used to be `declare -A SEVERITY_CHANNELS` with
+# `SEVERITY_CHANNELS["low"]=...` assignments. On the macOS system bash (3.2.57, no
+# associative-array support — introduced in bash 4.0), `declare -A` does NOT fail closed: it
+# emits "declare: -A: invalid option" but, with no `set -e` in this script, execution
+# continues and SEVERITY_CHANNELS silently reparses as an ordinary INDEXED array. Every
+# subsequent string subscript ("low", "medium", "high", "critical") is then evaluated as an
+# ARITHMETIC expression; a bareword that isn't a number or a prior variable evaluates to 0, so
+# all four assignments collapse onto SEVERITY_CHANNELS[0], and the lookup below always reads
+# the LAST one written ("critical" -> "slack,linear,pagerduty") no matter what severity was
+# asked for. Confirmed live: `escalate ... low` paged slack AND linear AND pagerduty. No error
+# is raised at lookup time, and the script's own exit code is 0 — a "low" event fans out at
+# "critical" volume with nothing on stderr to say why. A `case` function is the portable
+# spelling: NOT a plain indexed array keyed by a hand-rolled index, which would just move the
+# same string->number collision one level down (#5269 fix guidance).
+severity_channels() {
+  case "$1" in
+    low) echo "slack" ;;
+    medium) echo "slack,linear" ;;
+    high) echo "slack,linear,pagerduty" ;;
+    critical) echo "slack,linear,pagerduty" ;;
+    *) echo "" ;;
+  esac
+}
 
 # Initialize
 init_escalation() {
@@ -52,7 +71,8 @@ EOF
   echo "Escalation created: $escalation_id (Severity: $severity)"
 
   # Get channels for severity
-  local channels="${SEVERITY_CHANNELS[$severity]}"
+  local channels
+  channels="$(severity_channels "$severity")"
 
   # Send to each channel
   IFS=',' read -ra CHANNEL_ARRAY <<<"$channels"
