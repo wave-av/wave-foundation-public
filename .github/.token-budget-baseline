@@ -1,0 +1,39 @@
+# Token-budget ratchet BASELINE — the grandfathered over-cap files in THIS repo.
+#
+# Read by the "Token-budget gate (ratchet)" step in .github/workflows/checks.yml. Each non-comment
+# line is `<path><TAB><bytes>`: a first-party file that already exceeds the ~6000-token cap
+# (BYTE_MAX=21600) and is ALLOWED to stay over cap so a fleet-wide flip to blocking never bricks a
+# repo carrying legacy debt. The gate parses every row with `awk -F'\t'`, so the separator MUST be a
+# literal TAB. Spaces do not parse: the row would silently grant nothing and the gate would fail the
+# file as NEW over-cap.
+#
+# This is a BURNDOWN LEDGER, not a parking lot. Every line here is DEBT we intend to clear:
+#   • A baselined file MAY NOT GROW past its recorded byte count — the gate FAILS on growth.
+#   • A NEW over-cap file (not listed here) FAILS the gate — decompose it or extract embedded assets.
+#   • When you decompose a file back under the cap, DELETE its line so the ratchet tightens.
+# Never trim context to fit and never pad this list to dodge work. The right fix for anything listed
+# here is DECOMPOSITION — extract a cohesive module/stage — never content-trimming to squeeze under a
+# byte count. Generated/vendored/build output is exempt BY PATH or MARKER in the gate itself
+# (staging/, dist/, build/, vendor/, third_party/, node_modules/, *.min.js, lockfiles, an
+# AUTO-GENERATED line 1, linguist-vendored in .gitattributes), so it is NOT enumerated here.
+#
+# SEED / TIGHTEN ONLY (#958). The gate reads this file from the MERGE BASE, not from HEAD, so a PR
+# may not grant itself an exemption: a diff that both touches an over-cap file AND adds that file's
+# row here fails with "A PR may not grant itself an exemption (#958): the baseline is
+# seed/tighten-only. Land the entry in a separate, reviewable PR first, or DECOMPOSE." That is why
+# rows land in their own standalone PR that changes nothing else — this file was seeded exactly that
+# way. LOWERING a row is always legal and never self-granting; RAISING one in the same diff that
+# needs the higher ceiling never is.
+
+# --- .github/workflows/self-check.yml ---
+# Measured 22749 bytes on main (`git cat-file -s origin/main:.github/workflows/self-check.yml`).
+# The row below records 23500 — a deliberate 751 bytes of HEADROOM. It is not a typo and it is not
+# growth absorption. Rationale: the follow-up PR that makes self-check.yml's two
+# `mapfile -t … < <(git ls-files …)` discovery loops portable to bash 3.2 (macOS's system bash has
+# no `mapfile`) must GROW this file slightly, and #958 forbids that PR from raising its own ceiling.
+# An exact-size 22749 entry would therefore block the very fix this seed exists to unblock.
+# The headroom is enabling slack for one known, bounded edit and MUST NOT outlive it: that PR should
+# tighten this row to the real measured size in the same diff (lowering is always legal), and a
+# merge that leaves 23500 standing once the loops are portable is incomplete. Decomposing
+# self-check.yml under the cap — and striking this row — remains the actual resolution.
+.github/workflows/self-check.yml	23500
