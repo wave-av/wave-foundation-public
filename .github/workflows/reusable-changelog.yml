@@ -3,7 +3,7 @@ name: Reusable Changelog
 # workflow_call version of release.yml's changelog step so consuming repos inherit one changelog pipeline
 # (burnrate can retire its bash categorizer; router-dispatch its hand-maintained CHANGELOG).
 # Call on a v* tag:
-#   jobs: { changelog: { uses: wave-av/wave-foundation/.github/workflows/reusable-changelog.yml@master } }
+#   jobs: { changelog: { uses: wave-av/wave-foundation-public/.github/workflows/reusable-changelog.yml@main } }
 on:
   workflow_call:
     inputs:

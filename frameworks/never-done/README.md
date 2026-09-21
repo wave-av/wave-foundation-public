@@ -11,7 +11,7 @@ closure event is an invitation to file follow-ups, not an exit.
 | `audit-prompts.md` | The standard prompt set posted on every closing PR. Markdown-checklist style; author copies to a follow-up issue when something needs tracking. |
 | `generate-comment.sh` | The CI helper. Reads the PR body for closure patterns (`closes #N`, `fixes #N`, Linear `WAVE-NNNNN`), emits the audit-prompts comment markdown to stdout. |
 | `post-comment.sh` | Wraps `generate-comment.sh` + `gh pr comment`. Idempotent: skips if the audit prompts comment already exists. |
-| `example-spoke-workflow.yml` | Template a consuming repo copies to `.github/workflows/never-done.yml`. Calls the foundation's reusable workflow at `@master` (switch to `@v1` once advanced). |
+| `example-spoke-workflow.yml` | Template a consuming repo copies to `.github/workflows/never-done.yml`. Calls a hub reusable workflow that is NOT shipped in this public repository — you must supply your own (see the note in the file). |
 
 ## Wiring
 
@@ -23,18 +23,20 @@ Two layers:
 `frameworks/` directory is part of the canonical vendor set — see
 `VENDOR_DIRS` in `consume.sh`). No per-spoke action needed.
 
-**Workflow (opt-in):** the foundation's
-[`.github/workflows/never-done.yml`](../../.github/workflows/never-done.yml)
-is a *reusable* workflow (`on: workflow_call`). Spokes opt in by adding
-[`example-spoke-workflow.yml`](./example-spoke-workflow.yml) to their own
-`.github/workflows/never-done.yml`. That 20-line file:
+**Workflow (opt-in):** a *reusable* workflow (`on: workflow_call`,
+conventionally `.github/workflows/never-done.yml`) implements the
+audit-prompt-posting logic. **This public repository does not ship that hub
+workflow** — only the spoke template below and the vendored scripts above.
+Spokes opt in by adding [`example-spoke-workflow.yml`](./example-spoke-workflow.yml)
+to their own `.github/workflows/never-done.yml`. That file:
 
 1. Triggers on PR `opened` / `edited` / `synchronize` / `reopened`.
 2. Grants `pull-requests: write` (REQUIRED — a reusable workflow cannot
    elevate permissions the caller didn't grant; the comment poster fails
    silently without it).
-3. Calls `wave-av/wave-foundation/.github/workflows/never-done.yml@v1`
-   so the audit logic stays in lockstep across all consumers (zero drift).
+3. Calls a hub workflow implementing this contract — you must publish your
+   own (see the note in `example-spoke-workflow.yml`); a `uses:` pointing at
+   a repo you don't control and can't reach will never resolve.
 
 Once both layers are in place, every PR closure-pattern triggers the
 audit comment. No-op if the framework isn't vendored (graceful

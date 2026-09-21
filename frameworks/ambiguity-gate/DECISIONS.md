@@ -22,7 +22,7 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 
 ### ADR-002 — Public repos vendor `_checks.yml` (cannot consume the private foundation reusable workflow)
 
-- **Ambiguity:** should a public edge repo's gate `uses: wave-av/wave-foundation/.github/workflows/checks.yml@v1` (the consumer-gate example) or a local copy?
+- **Ambiguity:** should a public edge repo's gate `uses:` the foundation reusable workflow directly (the consumer-gate example) or a local copy? <!-- # guard:allow historical decision-log quote of the exact unresolvable shape this ADR's own Evidence/Decision below rules out; see ADR-008 for the generalized policy -->
 - **Evidence:** GitHub Actions does NOT let a public repo consume a PRIVATE repo's reusable workflow — tested end-to-end on a public edge repo (the call fails in 0s, 0 jobs; the org-access setting had no effect).
 - **Decision:** public repos vendor `_checks.yml` verbatim (byte-synced to foundation `checks.yml@v1`) + a thin `foundation-gate.yml` wrapper. PRIVATE repos use the `@v1` consume path.
 - **Reversible:** yes.
@@ -61,6 +61,26 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 - **Evidence:** `origin/staging` is latest; `main` lags (promotion target); the local checkout is stale/diverged; no `phase1` repo or branch exists.
 - **Decision:** always read latest from `origin/staging`; treat WSC as read-only reference (build in NEW repos).
 - **Reversible:** n/a.
+
+### ADR-008 — Public docs/templates reference only what a public consumer can resolve (2026-09-21)
+
+- **Ambiguity:** may a public repo's documentation or template snippet point a `uses:` (or
+  equivalent adoption instruction) at the private upstream repository's reusable workflow,
+  the way ADR-002 already ruled out for the `checks.yml` gate specifically?
+- **Evidence:** 0 successes across all-time run history for a public-repo caller invoking a
+  private repo's reusable workflow — a cross-org `uses:` into a private repo fails before any
+  job is created (no run, no log, no check on the head SHA), consistent with ADR-002's own
+  end-to-end test. This is a structural GitHub Actions constraint, not a config mistake, so it
+  cannot be worked around per-caller.
+- **Decision:** generalize ADR-002 beyond the single `checks.yml` gate — every public doc and
+  template in this repository references only what a public consumer can actually resolve:
+  either a reusable workflow this repository ships under `.github/workflows/` (via
+  `wave-av/wave-foundation-public/.github/workflows/<file>@main`), or a local vendored copy
+  (`uses: ./.github/workflows/<file>` plus a one-line note on where to copy it from), or — if
+  the workflow body isn't shipped anywhere in this repository — the doc says so plainly instead
+  of pointing at an unresolvable `uses:`. Enforced going forward by `scripts/check-public-uses.sh`.
+- **Reversible:** yes (PR) — narrows further, or the guard script's allowlist, without re-litigating
+  the underlying GitHub Actions constraint.
 
 ---
 

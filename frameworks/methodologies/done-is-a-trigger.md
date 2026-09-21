@@ -26,8 +26,9 @@ Per the founder framing in the rule, this **does not block merges** — blocking
 friction that real work routes around. It is surfaced, not gated-hard:
 
 - [`frameworks/never-done/`](../never-done/) — the automation: `generate-comment.sh` /
-  `post-comment.sh` + [`.github/workflows/never-done.yml`](../../.github/workflows/never-done.yml)
-  post the audit-prompts comment on any PR that claims to close something.
+  `post-comment.sh` + a hub reusable workflow (not shipped in this public repo — see
+  `frameworks/never-done/README.md`) post the audit-prompts comment on any PR that claims
+  to close something.
 - `frameworks/gates/registry.yaml` — the **advisory** `never-done` gate entry.
 
 There is no "ratchet to required" plan; advisory is the intended terminal state.

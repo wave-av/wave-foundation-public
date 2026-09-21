@@ -4,6 +4,11 @@
 #
 # Adoption (consumer side):
 #
+# This file is not shipped under `.github/workflows/` in this repository, so a
+# cross-repo `uses:` can't reach it. Copy validate-capabilities.yml from this
+# repository's frameworks/platform-registry/workflows/ into your own
+# .github/workflows/ first, then call it locally:
+#
 #   .github/workflows/capabilities.yml:
 #     name: capabilities
 #     on:
@@ -11,7 +16,7 @@
 #       push: { branches: [main, master] }
 #     jobs:
 #       validate:
-#         uses: wave-av/wave-foundation/.github/workflows/validate-capabilities.yml@v1
+#         uses: ./.github/workflows/validate-capabilities.yml
 #         with:
 #           capabilities_path: capabilities.json
 #           check_package_version: true

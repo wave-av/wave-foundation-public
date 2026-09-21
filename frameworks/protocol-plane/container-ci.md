@@ -87,6 +87,11 @@ jobs:
 
 ## Consumer shape (in wave-bridge-edge)
 
+The `container-deploy.yml` body above is not shipped as a standalone file under this
+repository's `.github/workflows/`, so a cross-repo `uses:` cannot reach it. Copy the
+`container-deploy.yml` code block from the "Reusable workflow shape" section above into
+your own `.github/workflows/container-deploy.yml`, then call it locally:
+
 `wave-bridge-edge/.github/workflows/srt-deploy.yml`:
 
 ```yaml
@@ -102,7 +107,7 @@ on:
 jobs:
   staging:
     if: github.ref == 'refs/heads/master'
-    uses: wave-av/wave-foundation/.github/workflows/container-deploy.yml@v1
+    uses: ./.github/workflows/container-deploy.yml
     with:
       container_dir: containers/srt
       image_name: docker.io/wave-av/wave-srt-bridge
@@ -115,7 +120,7 @@ jobs:
   production:
     needs: staging
     if: github.ref == 'refs/heads/master'
-    uses: wave-av/wave-foundation/.github/workflows/container-deploy.yml@v1
+    uses: ./.github/workflows/container-deploy.yml
     with:
       container_dir: containers/srt
       image_name: docker.io/wave-av/wave-srt-bridge

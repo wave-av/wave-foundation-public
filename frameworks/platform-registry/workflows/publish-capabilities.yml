@@ -8,7 +8,11 @@
 #      contents inline, so the aggregator can read it without needing
 #      per-repo gh-pages plumbing.
 #
-# To include this in a consumer repo, add:
+# To include this in a consumer repo: this file is not shipped under
+# `.github/workflows/` in this repository, so a cross-repo `uses:` can't
+# reach it. Copy publish-capabilities.yml from this repository's
+# frameworks/platform-registry/workflows/ into your own .github/workflows/
+# first, then call it locally:
 #   .github/workflows/capabilities.yml:
 #     name: capabilities
 #     on:
@@ -17,7 +21,7 @@
 #         paths: [capabilities.json]
 #     jobs:
 #       publish:
-#         uses: wave-av/wave-foundation/.github/workflows/publish-capabilities.yml@v1
+#         uses: ./.github/workflows/publish-capabilities.yml
 #
 # The push from wave-foundation back to the registry is gated behind the
 # `registry-sync` repository_dispatch event (manually wired during Phase D
