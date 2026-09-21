@@ -94,6 +94,21 @@ check BLOCK internal-ip      '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]
 # shellcheck disable=SC2016  # $HOME is literal guidance text, not meant to expand
 check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'        'Hardcoded developer absolute path — use $HOME or a CLI argument'
 
+# A public repo's `uses:` (GitHub Actions reusable-workflow call, in a .yml step
+# OR inside a .md fenced example) must reference something a public consumer can
+# actually resolve. A cross-org call into a wave-av repo that is NOT this repo's
+# own `-public` sibling gets ZERO successful runs, forever (GitHub Actions refuses
+# a public repo consuming a private repo's reusable workflow — the run fails
+# before any job is created; see frameworks/ambiguity-gate/DECISIONS.md ADR-002 /
+# ADR-008). Scoped to the `wave-av` org, not a blanket private-repo-name scan, so
+# it fires on the exact unresolvable-`uses:` shape regardless of which private
+# wave-av repo is named, without depending on GUARD_PRIVATE_REPOS being set.
+# [\x27"]? (hex-escaped single quote, avoids bash single-quote-in-single-quote
+# escaping) allows an optional quote so `uses: "wave-av/..."` / `uses: 'wave-av/...'`
+# don't bypass the match.
+check BLOCK unresolvable-uses 'uses:\s*[\x27"]?wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
+  'uses: referencing a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
+
 # Private WAVE repo/product names that must never appear in a public tree. The
 # names are NOT hardcoded here (this file is itself public) — they are supplied
 # at run time via GUARD_PRIVATE_REPOS (CI injects it from an org-level Actions

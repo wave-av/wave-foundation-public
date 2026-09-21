@@ -3,7 +3,10 @@ name: Reusable Changelog
 # workflow_call version of release.yml's changelog step so consuming repos inherit one changelog pipeline
 # (burnrate can retire its bash categorizer; router-dispatch its hand-maintained CHANGELOG).
 # Call on a v* tag:
-#   jobs: { changelog: { uses: wave-av/wave-foundation/.github/workflows/reusable-changelog.yml@master } }
+#   jobs: { changelog: { uses: wave-av/wave-foundation-public/.github/workflows/reusable-changelog.yml@main } }
+# NOTE: @main is a mutable pin, acceptable here only because this mirror carries no version
+# tags — see ADR-008. This workflow runs with `contents: write` and publishes releases, so
+# pin to a SHA/tag instead once the mirror carries release refs.
 on:
   workflow_call:
     inputs:

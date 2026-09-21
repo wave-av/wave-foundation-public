@@ -127,7 +127,7 @@ Together with Phase E's CI validator, this closes the loop: **prevention** at se
 | `--check-cli-binaries` | declared `exposes.cli[].binary` resolves to a real `package.json#bin` entry or `cmd/<name>/` directory | "declared CLI binary `my-cli` not found in any executable surface" |
 | `--check-cross-refs` | each `consumes.waveProducts[].repo` exists in foundation's `state.json` | "references `wave-av/wave-ghost-producer` but that repo is not in the registry" |
 
-`.github/workflows/validate-capabilities.yml` is the reusable workflow that bundles schema validation + drift checks. Wire it into a consumer repo by adding:
+`frameworks/platform-registry/workflows/validate-capabilities.yml` is the reusable workflow that bundles schema validation + drift checks. It is not shipped under this repository's own `.github/workflows/`, so a cross-repo `uses:` cannot reach it — copy the file into your own `.github/workflows/` first, then wire it into a consumer repo by adding:
 
 ```yaml
 # .github/workflows/capabilities.yml
@@ -135,7 +135,7 @@ name: capabilities
 on: { pull_request: {}, push: { branches: [main, master] } }
 jobs:
   validate:
-    uses: wave-av/wave-foundation/.github/workflows/validate-capabilities.yml@v1
+    uses: ./.github/workflows/validate-capabilities.yml
     with:
       check_package_version: true
       check_cli_binaries: true

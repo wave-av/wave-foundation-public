@@ -44,7 +44,7 @@
 # USAGE
 #   jobs:
 #     ndi-image:
-#       uses: wave-av/wave-foundation/.github/workflows/image-content-gate.yml@main
+#       uses: wave-av/wave-foundation-public/.github/workflows/image-content-gate.yml@main
 #       with:
 #         context: containers/ndi
 #         forbid: 'libndi|ndi-discovery-server|ndi-record'

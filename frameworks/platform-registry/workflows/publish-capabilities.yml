@@ -8,7 +8,11 @@
 #      contents inline, so the aggregator can read it without needing
 #      per-repo gh-pages plumbing.
 #
-# To include this in a consumer repo, add:
+# To include this in a consumer repo: this file is not shipped under
+# `.github/workflows/` in this repository, so a cross-repo `uses:` can't
+# reach it. Copy publish-capabilities.yml from this repository's
+# frameworks/platform-registry/workflows/ into your own .github/workflows/
+# first, then call it locally:
 #   .github/workflows/capabilities.yml:
 #     name: capabilities
 #     on:
@@ -17,7 +21,7 @@
 #         paths: [capabilities.json]
 #     jobs:
 #       publish:
-#         uses: wave-av/wave-foundation/.github/workflows/publish-capabilities.yml@v1
+#         uses: ./.github/workflows/publish-capabilities.yml
 #
 # The push from wave-foundation back to the registry is gated behind the
 # `registry-sync` repository_dispatch event (manually wired during Phase D
@@ -63,13 +67,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Pull just the validator + schema from wave-foundation @ v1 — we DON'T need
-          # the whole foundation repo, this is a sparse-fetch.
+          # Pull just the validator + schema from the public mirror @ main (this
+          # repo's own raw content, no auth needed) — NOT the private upstream, which
+          # 404s for an unauthenticated public consumer. Sparse-fetch: we don't need
+          # the whole repo. See ADR-008.
           curl -sSfL -o /tmp/validate.ts \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/validate.ts"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/scripts/validate.ts"
           mkdir -p /tmp/schema
           curl -sSfL -o /tmp/schema/capabilities.schema.json \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/schema/capabilities.schema.json"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/schema/capabilities.schema.json"
       - name: Validate
         env:
           CAPS: ${{ inputs.capabilities_path }}
