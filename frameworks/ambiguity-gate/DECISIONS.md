@@ -78,7 +78,8 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
   `wave-av/wave-foundation-public/.github/workflows/<file>@main`), or a local vendored copy
   (`uses: ./.github/workflows/<file>` plus a one-line note on where to copy it from), or — if
   the workflow body isn't shipped anywhere in this repository — the doc says so plainly instead
-  of pointing at an unresolvable `uses:`. Enforced going forward by `scripts/check-public-uses.sh`.
+  of pointing at an unresolvable `uses:`. Enforced going forward by the `unresolvable-uses` rule
+  in `scripts/public-repo-guard/content-policy.sh`.
 - **Reversible:** yes (PR) — narrows further, or the guard script's allowlist, without re-litigating
   the underlying GitHub Actions constraint.
 
