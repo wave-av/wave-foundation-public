@@ -67,13 +67,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Pull just the validator + schema from wave-foundation @ v1 — we DON'T need
-          # the whole foundation repo, this is a sparse-fetch.
+          # Pull just the validator + schema from the public mirror @ main (this
+          # repo's own raw content, no auth needed) — NOT the private upstream, which
+          # 404s for an unauthenticated public consumer. Sparse-fetch: we don't need
+          # the whole repo. See ADR-008.
           curl -sSfL -o /tmp/validate.ts \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/validate.ts"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/scripts/validate.ts"
           mkdir -p /tmp/schema
           curl -sSfL -o /tmp/schema/capabilities.schema.json \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/schema/capabilities.schema.json"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/schema/capabilities.schema.json"
       - name: Validate
         env:
           CAPS: ${{ inputs.capabilities_path }}

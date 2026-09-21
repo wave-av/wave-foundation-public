@@ -6,6 +6,11 @@ name: foundation checks
 # One source of truth -> update here, every repo inherits it (no copying = no drift).
 # NOTE: this file ships in wave-foundation-public, so the `uses:` above must point at the
 # -public org/repo — a caller on -public can never resolve a private-repo `uses:`.
+# NOTE: pinned to @main (mutable) only because this mirror carries no version tags — see
+# ADR-008. This gate's own fail-closed defaults are normally armed only at a v1 tag move
+# (scripts/advance-major-tag.sh); @main here means a push to this repo's main takes effect
+# immediately for every public caller, without that tag-move review. Pin to a SHA/tag once
+# the mirror carries release refs.
 on:
   workflow_call:
     inputs:

@@ -84,18 +84,22 @@ jobs:
       - name: Install tsx
         if: steps.present.outputs.present == 'true'
         run: npm install --no-save --no-audit --no-fund tsx@4
-      - name: Fetch validator + schema + drift checker from foundation@v1
+      - name: Fetch validator + schema + drift checker from the public mirror@main
+        # Fetched from wave-foundation-public (this repo's own raw content, no auth
+        # needed) — NOT the private upstream, which 404s for an unauthenticated public
+        # consumer. All four files are vendored at frameworks/platform-registry/{scripts,schema}/
+        # in this repository; see ADR-008.
         if: steps.present.outputs.present == 'true'
         run: |
           mkdir -p /tmp/registry/scripts /tmp/registry/schema
           curl -sSfL -o /tmp/registry/scripts/validate.ts \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/validate.ts"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/scripts/validate.ts"
           curl -sSfL -o /tmp/registry/scripts/check-drift.ts \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/check-drift.ts"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/scripts/check-drift.ts"
           curl -sSfL -o /tmp/registry/scripts/check-honesty.ts \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/scripts/check-honesty.ts"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/scripts/check-honesty.ts"
           curl -sSfL -o /tmp/registry/schema/capabilities.schema.json \
-            "https://raw.githubusercontent.com/wave-av/wave-foundation/v1/frameworks/platform-registry/schema/capabilities.schema.json"
+            "https://raw.githubusercontent.com/wave-av/wave-foundation-public/main/frameworks/platform-registry/schema/capabilities.schema.json"
       - name: Schema validation
         if: steps.present.outputs.present == 'true'
         env:

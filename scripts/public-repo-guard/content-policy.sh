@@ -103,7 +103,10 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 # ADR-008). Scoped to the `wave-av` org, not a blanket private-repo-name scan, so
 # it fires on the exact unresolvable-`uses:` shape regardless of which private
 # wave-av repo is named, without depending on GUARD_PRIVATE_REPOS being set.
-check BLOCK unresolvable-uses 'uses:\s*wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
+# [\x27"]? (hex-escaped single quote, avoids bash single-quote-in-single-quote
+# escaping) allows an optional quote so `uses: "wave-av/..."` / `uses: 'wave-av/...'`
+# don't bypass the match.
+check BLOCK unresolvable-uses 'uses:\s*[\x27"]?wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
   'uses: referencing a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
 
 # Private WAVE repo/product names that must never appear in a public tree. The

@@ -67,11 +67,11 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 - **Ambiguity:** may a public repo's documentation or template snippet point a `uses:` (or
   equivalent adoption instruction) at the private upstream repository's reusable workflow,
   the way ADR-002 already ruled out for the `checks.yml` gate specifically?
-- **Evidence:** 0 successes across all-time run history for a public-repo caller invoking a
-  private repo's reusable workflow — a cross-org `uses:` into a private repo fails before any
-  job is created (no run, no log, no check on the head SHA), consistent with ADR-002's own
-  end-to-end test. This is a structural GitHub Actions constraint, not a config mistake, so it
-  cannot be worked around per-caller.
+- **Evidence:** 0 successes across all-time run history for a public-repo caller invoking the
+  private upstream repository's reusable workflow — measured out-of-band on 2026-09-20 against
+  the calling repos' run history. A cross-org `uses:` into a private repo fails before any job
+  is created (no run, no log, no check on the head SHA), consistent with ADR-002's own
+  end-to-end test above: a public repo cannot consume a private repo's reusable workflow.
 - **Decision:** generalize ADR-002 beyond the single `checks.yml` gate — every public doc and
   template in this repository references only what a public consumer can actually resolve:
   either a reusable workflow this repository ships under `.github/workflows/` (via

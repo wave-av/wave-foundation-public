@@ -15,7 +15,7 @@
 # workflow cannot elevate permissions the caller didn't grant.
 #
 # Advisory only (`continue-on-error: true` is set on the hub-side job).
-# See rules/never-done.md for the standing principle.
+# See frameworks/never-done/README.md for the standing principle.
 
 name: Never-Done audit invitation
 
