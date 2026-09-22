@@ -1,15 +1,21 @@
-# pr-agent (OSS) — INLINE form for public repos (no references to private wave-foundation).
-# Mirrors wave-foundation/.github/workflows/reusable-pr-agent.yml. Engine: OSS Qodo Merge on OPENAI_KEY.
+# pr-agent (OSS) — INLINE form for public repos (no cross-repo workflow reference).
+# Mirrors the `reusable-pr-agent.yml` lane that lives in this org's non -public
+# defining repo. Engine: OSS Qodo Merge on OPENAI_KEY.
 #
 # WHY AN INLINE COPY EXISTS AT ALL, restated because 28 repos got this wrong.
 # GitHub does not let a PUBLIC repository call a reusable workflow from a
-# PRIVATE one. wave-foundation is private, so a public repo pointing at
-# `wave-av/wave-foundation/.github/workflows/reusable-pr-agent.yml@…` never
-# resolves: the run dies before any job is created — `conclusion: failure`,
-# zero jobs, no log, and no check run on the head sha to read. Measured
-# 2026-08-22 across 16 repos, a clean 16/16 split on visibility alone:
-# 7 public repos, 176 runs, 100% failure; 9 private repos, zero failures.
+# PRIVATE one. The reusable pr-agent lane lives in a repo in this org that is
+# NOT published, so a public repo pointing a `uses:` at that repo's
+# `.github/workflows/reusable-pr-agent.yml@…` never resolves: the run dies
+# before any job is created — `conclusion: failure`, zero jobs, no log, and no
+# check run on the head sha to read. Measured 2026-08-22 across 16 repos, a
+# clean 16/16 split on visibility alone: 7 public repos, 176 runs, 100%
+# failure; 9 private repos, zero failures.
 # THIS FILE is what a public repo adopts instead. See wave-pen#388.
+#
+# The path is described, not quoted: spelling it out is the exact shape
+# scripts/public-repo-guard/content-policy.sh blocks — a comment demonstrating
+# the broken form still teaches it.
 #
 # IT IS A MIRROR, AND MIRRORS DRIFT. As of 2026-08-22 this copy had fallen a
 # long way behind the reusable lane it claims to mirror — no retry, no verdict

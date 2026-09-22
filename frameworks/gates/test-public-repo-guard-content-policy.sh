@@ -18,14 +18,23 @@
 #
 # WHAT EACH CASE PINS is stated inline. Two are regression pins rather than coverage:
 #
-#   * Case P3 (a bare comment, no `uses:` token) pins the blind spot that produced a
-#     published undercount: a commented-out reference is still the payload. It teaches
-#     a reader to write the broken thing, and one copy-paste into a workflow ships the
-#     failure. Anchoring the composite-action rule on `uses:` would have scored this
-#     tree clean while three such lines sat in it.
-#   * Case N1/N2 pin the `(?!-public/)` lookahead — the exemption for this repo's own
-#     published sibling. Without a negative control, "the rule fires" and "the rule
-#     fires on everything" look identical from a passing test.
+#   * Cases P3 and P1b (a bare comment, no `uses:` token) pin the blind spot that
+#     produced a published undercount: a commented-out reference is still the payload.
+#     It teaches a reader to write the broken thing, and one copy-paste into a workflow
+#     ships the failure. Anchoring on `uses:` would have scored this tree clean while
+#     such lines sat in it — which is exactly what happened twice. The composite-action
+#     rule was never `uses:`-anchored; the reusable-workflow rule shipped that way, read
+#     0 matches, and was re-anchored on the org-scoped PATH once a prose mention of the
+#     identical path turned up in .github/workflows/pr-agent.yml. "Clean by the rule"
+#     and "clean of the shape" are different claims; only the second is worth making.
+#   * Cases N1/N2/N7 pin the `(?!-public/)` lookahead — the exemption for this repo's
+#     own published sibling, on all three rules. Without a negative control, "the rule
+#     fires" and "the rule fires on everything" look identical from a passing test.
+#   * Cases N4/N5/N9 are the controls on the path-anchoring widening specifically. Going
+#     from `uses:`-keyed to path-keyed is precisely where a false positive would appear,
+#     so ordinary github.com hyperlinks — an issue link, an example PR URL, a blob link
+#     to a workflow file — must all stay clean. They resolve for anyone with access and
+#     execute nothing; only a `uses:`-resolvable path is the unresolvable artifact.
 #
 # Every fixture is assembled from variables at run time, so this tracked file contains
 # no line that the rules under test would themselves match — a test for a leak gate
@@ -112,6 +121,17 @@ expect_block P1 unresolvable-uses \
   gate:
     uses: $ORG/$PRIV/.github/workflows/reusable-chassis-gate.yml@main"
 
+expect_block P1b unresolvable-uses \
+  'shape 1 inside a COMMENT with no uses: token — the direct analogue of P3; a uses:-anchored rule scored a tree clean while this exact line sat in .github/workflows/pr-agent.yml' \
+  'pr-agent.yml' \
+  "# GitHub does not let a PUBLIC repo call a reusable workflow from a PRIVATE one, so
+# \`$ORG/$PRIV/.github/workflows/reusable-pr-agent.yml@main\` never resolves."
+
+expect_block P1c unresolvable-uses \
+  'shape 1 with the target quoted — the case the old optional-quote character class existed for, now covered by construction' \
+  'workflow.yml' \
+  "    uses: \"$ORG/$PRIV/.github/workflows/reusable-chassis-gate.yml@main\""
+
 expect_block P2 unresolvable-action \
   'shape 2: uses: a composite action in an unpublished org repo' \
   'workflow.yml' \
@@ -167,14 +187,29 @@ expect_clean N3 \
   '      - uses: ./.github/actions/chassis-check'
 
 expect_clean N4 \
-  'a plain issue hyperlink into an unpublished org repo is not a fetch and must not be flagged' \
+  'a plain issue hyperlink into an unpublished org repo is not a reference and must not be flagged — the control that matters most now all three rules are path-anchored rather than uses:-anchored' \
   'README.md' \
   "- [roadmap](https://$GH/$ORG/$PRIV/issues/95) — O-series products"
 
 expect_clean N5 \
-  'the example PR URL form used by the changelog gate test must not be flagged (real line in this tree)' \
+  'the example PR URL form used by the changelog gate test must not be flagged (real line in this tree); second control on the path-anchoring widening' \
   'test-changelog-unreleased.sh' \
   "    echo \"https://$GH/$ORG/$PRIV/pull/\${NEW_PR:-9001}\""
+
+expect_clean N7 \
+  'the published -public sibling is exempt for reusable workflows too (pins the lookahead on the re-anchored shape 1 rule)' \
+  'workflow.yml' \
+  "    uses: $ORG/$PUB/.github/workflows/reusable-chassis-gate.yml@main"
+
+expect_clean N8 \
+  'a same-repo local reusable-workflow path carries no owner/repo prefix and must never match' \
+  'workflow.yml' \
+  '    uses: ./.github/workflows/reusable-chassis-gate.yml'
+
+expect_clean N9 \
+  'a browser hyperlink to a workflow FILE in an unpublished org repo must not be flagged — it resolves for anyone with access and executes nothing; the blob/<ref>/ segment is what keeps it out' \
+  'README.md' \
+  "See [the reusable lane](https://$GH/$ORG/$PRIV/blob/main/.github/workflows/reusable-pr-agent.yml)."
 
 expect_clean N6 \
   'the documented # guard:allow <reason> escape hatch still suppresses these rules, like every other rule' \
