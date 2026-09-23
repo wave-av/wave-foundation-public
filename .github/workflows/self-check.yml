@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   secret-scan:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -38,7 +38,7 @@ jobs:
       - name: Secret scan (self, allowlist-aware)
         run: bash frameworks/gates/scripts/secret-scan.sh
   file-size:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -69,7 +69,7 @@ jobs:
   context-integrity:
     # LAW (rules/file-size-limits.md): a gate is an architecture signal — DECOMPOSE, never trim context
     # to pass it. Flags context REMOVED from a near-cap file with no module extracted. Fail-open on infra.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -86,7 +86,7 @@ jobs:
   skill-validate:
     # The gate that would have caught the 2026-05-26 regression: validates every SKILL.md's
     # frontmatter (valid YAML, no dup keys, name==dir, non-empty description + allowed-tools).
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -101,7 +101,7 @@ jobs:
   version-sync:
     # plugin.json version == marketplace.json version == latest git tag (catches manifest drift —
     # e.g. a release tagged while the manifests were left behind). Maintained by scripts/release.sh.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -117,7 +117,7 @@ jobs:
     # Dogfood the Claude-API request-shape linter against this repo (the chassis under
     # frameworks/model-routing/local_offload talks to the API). Blocking here — foundation enforces
     # the rule it ships. Spokes get the advisory form via the reusable checks.yml.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -129,7 +129,7 @@ jobs:
     # Make frameworks/gates/registry.yaml the provable source of truth: fail if the live
     # .pre-commit-config.yaml local hooks don't match what the registry declares. Add a gate in the
     # registry, regenerate, commit — or this fails.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -148,7 +148,7 @@ jobs:
     # queue runs a job the PR never did. That combination dequeued #1010 at 12/12 green with no red
     # mark anywhere (#1014). Pre-existing findings are grandfathered in .status-context-baseline.txt;
     # this fails on NEW ones, and on a baseline entry that has silently stopped reproducing.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -164,7 +164,7 @@ jobs:
     # WAVE_PRODUCTS array (which renders the human product-nav AND the agent wave-products.json) must
     # match it — every built product present, accent hex derived from the manifest OKLCH (never hand-
     # typed twice). Add/repaint a product in the manifest, regenerate nav.ts — or this fails. (#69)
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -182,7 +182,7 @@ jobs:
     # fleet. BLOCKING here (foundation enforces its own rules) — first via --self-test (the fixtures
     # that pin metered/auth-without-enforcement detection + the gateway-fronted escape), then against
     # this repo's own capabilities.json (clean: no metered/auth API claims).
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -216,7 +216,7 @@ jobs:
     # so it executes 3x (~4s of that 10s). Accepted, not optimized away: the inner brake guards rule
     # promotion — a more dangerous moment than this one — and weakening a real safeguard to buy back
     # four seconds of CI is a bad trade.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -276,7 +276,7 @@ jobs:
     #
     # Measured cost, this machine: ~16s for all 10 suites (ratchet-siblings 18s dominates when run
     # alone; concurrently the wall is lower). Well inside a normal job.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
