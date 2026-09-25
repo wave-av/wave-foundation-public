@@ -26,7 +26,7 @@ permissions:
 jobs:
   shell:
     name: shell ratchet
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -52,7 +52,7 @@ jobs:
 
   python:
     name: python ratchet
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -75,7 +75,7 @@ jobs:
     # DORMANT until native code lands (see header). cppcheck does whole-file analysis with no compile
     # database, so the gate works the instant the first C/C++ file appears; clang-tidy (needs
     # compile_commands.json from a real build) is the deeper scheduled oracle — TODO in docs/ratchet.md.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -102,7 +102,7 @@ jobs:
     name: rust ratchet
     # DORMANT until a Cargo crate lands (see header). clippy must compile the crate, so it runs per
     # Cargo workspace; with no Cargo.toml the script is a clean no-op over zero changed *.rs.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -126,7 +126,7 @@ jobs:
     # DORMANT until a Go module lands (see header). `go vet` must compile the package, so it runs per
     # go.mod module; with no go.mod the script is a clean no-op over zero changed *.go. Go is
     # preinstalled on ubuntu-latest — vet needs no extra component (unlike clippy).
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -148,7 +148,7 @@ jobs:
     # DORMANT until Ruby lands (see header). rubocop does whole-file analysis with no build, so the
     # gate works the instant the first *.rb appears; with zero *.rb it is a clean no-op. When
     # activating in a Ruby repo, PIN the rubocop version here + regenerate the baseline for parity.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
