@@ -94,33 +94,39 @@ check BLOCK internal-ip      '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]
 # shellcheck disable=SC2016  # $HOME is literal guidance text, not meant to expand
 check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'        'Hardcoded developer absolute path — use $HOME or a CLI argument'
 
-# A public repo's `uses:` (GitHub Actions reusable-workflow call, in a .yml step
-# OR inside a .md fenced example) must reference something a public consumer can
-# actually resolve. A cross-org call into a wave-av repo that is NOT this repo's
-# own `-public` sibling gets ZERO successful runs, forever (GitHub Actions refuses
-# a public repo consuming a private repo's reusable workflow — the run fails
-# before any job is created; see frameworks/ambiguity-gate/DECISIONS.md ADR-002 /
-# ADR-008). Scoped to the `wave-av` org, not a blanket private-repo-name scan, so
-# it fires on the exact unresolvable-`uses:` shape regardless of which private
-# wave-av repo is named, without depending on GUARD_PRIVATE_REPOS being set.
-# [\x27"]? (hex-escaped single quote, avoids bash single-quote-in-single-quote
-# escaping) allows an optional quote so `uses: "wave-av/..."` / `uses: 'wave-av/...'`
-# don't bypass the match.
-check BLOCK unresolvable-uses 'uses:\s*[\x27"]?wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
-  'uses: referencing a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
-
-# SECOND unresolvable shape: a COMPOSITE ACTION (`.github/actions/<name>`) owned by
-# a wave-av repo that is not this repo's own `-public` sibling. A public consumer
-# resolves it exactly as badly as the reusable workflow above — the job fails before
-# the step runs — so it belongs to the same leak class, just a different path suffix.
+# --- Unresolvable cross-repo references (three shapes) -----------------------
+# A public repo must not reference something a public consumer cannot resolve. A
+# reference into a wave-av repo that is NOT this repo's own `-public` sibling gets
+# ZERO successful runs, forever (GitHub Actions refuses a public repo consuming a
+# private repo's reusable workflow — the run fails before any job is created; see
+# frameworks/ambiguity-gate/DECISIONS.md ADR-002 / ADR-008). Three shapes, three
+# rules, all org-scoped rather than a blanket private-repo-name scan, so each fires
+# on the reference SHAPE regardless of which repo is named and without depending on
+# GUARD_PRIVATE_REPOS being set.
 #
-# Deliberately NOT anchored on `uses:`, unlike the rule above. Every occurrence of
-# this shape present in this tree when the rule was written sat in a PROSE COMMENT
-# (a zizmor ignore-rationale) with no `uses:` token anywhere on the line, and a
-# comment is still the payload: it teaches a reader to write the broken thing, and
-# one copy-paste into a real workflow ships the failure. A `<owner>/<repo>/.github/
-# actions/...` path is the unresolvable artifact by itself, so the org-scoped PATH
-# shape — not the surrounding YAML key — is the correct anchor.
+# All three anchor on the org-scoped PATH, never on a surrounding YAML key. That is
+# a correction, not a preference: this rule was originally `uses:`-anchored, and a
+# prose comment quoting the identical unresolvable path was invisible to it. On the
+# tree where that was found, the `uses:`-anchored rule reported 0 matches while a
+# line carrying the shape sat in .github/workflows/pr-agent.yml — "clean by the
+# rule" and "clean of the shape" are different claims, and only the second is worth
+# making. A commented reference is still the payload: it teaches a reader to write
+# the broken thing, and one copy-paste into a workflow ships the failure.
+#
+# SHAPE 1 — a reusable workflow (`.github/workflows/<name>.yml`). The `uses:` case
+# is a strict subset of the path match, so quoted forms (`uses: "wave-av/…"`,
+# `uses: 'wave-av/…'`) that the old optional-quote class existed to cover are now
+# covered by construction rather than by an extra alternation.
+check BLOCK unresolvable-uses 'wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
+  'Reusable-workflow path in a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
+
+# SHAPE 2 — a COMPOSITE ACTION (`.github/actions/<name>`) owned by a wave-av repo
+# that is not this repo's own `-public` sibling. A public consumer resolves it
+# exactly as badly as the reusable workflow above — the job fails before the step
+# runs — so it is the same leak class with a different path suffix. This one was
+# never `uses:`-anchored: every occurrence found when it was written sat in a PROSE
+# COMMENT (a zizmor ignore-rationale) with no `uses:` token on the line, which is
+# what prompted re-anchoring shape 1 to match.
 #
 # The two resolvable forms stay clean: a same-repo local `uses: ./.github/actions/x`
 # carries no owner/repo prefix and cannot match, and this repo's own `-public`
@@ -128,9 +134,9 @@ check BLOCK unresolvable-uses 'uses:\s*[\x27"]?wave-av/(?:(?!-public/)[\w.-])+/\
 check BLOCK unresolvable-action 'wave-av/(?:(?!-public/)[\w.-])+/\.github/actions/' \
   'Composite-action path in a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
 
-# THIRD unresolvable shape, and the most dangerous of the three: a RUNTIME fetch of
-# a file out of a wave-av repo that is not this repo's own `-public` sibling, via
-# raw.githubusercontent.com. Unlike the two `uses:` shapes this one does NOT fail in
+# SHAPE 3, and the most dangerous of the three: a RUNTIME fetch of a file out of a
+# wave-av repo that is not this repo's own `-public` sibling, via
+# raw.githubusercontent.com. Unlike shapes 1 and 2 this one does NOT fail in
 # CI — the tree is valid, every gate reports green, and the 404 lands later, in a
 # consumer's environment, at the moment the script or hook actually runs. Anything
 # that swallows the failure (`2>/dev/null`, `|| true`, an unchecked response) turns
