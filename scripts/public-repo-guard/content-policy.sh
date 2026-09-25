@@ -109,6 +109,42 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 check BLOCK unresolvable-uses 'uses:\s*[\x27"]?wave-av/(?:(?!-public/)[\w.-])+/\.github/workflows/' \
   'uses: referencing a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
 
+# SECOND unresolvable shape: a COMPOSITE ACTION (`.github/actions/<name>`) owned by
+# a wave-av repo that is not this repo's own `-public` sibling. A public consumer
+# resolves it exactly as badly as the reusable workflow above — the job fails before
+# the step runs — so it belongs to the same leak class, just a different path suffix.
+#
+# Deliberately NOT anchored on `uses:`, unlike the rule above. Every occurrence of
+# this shape present in this tree when the rule was written sat in a PROSE COMMENT
+# (a zizmor ignore-rationale) with no `uses:` token anywhere on the line, and a
+# comment is still the payload: it teaches a reader to write the broken thing, and
+# one copy-paste into a real workflow ships the failure. A `<owner>/<repo>/.github/
+# actions/...` path is the unresolvable artifact by itself, so the org-scoped PATH
+# shape — not the surrounding YAML key — is the correct anchor.
+#
+# The two resolvable forms stay clean: a same-repo local `uses: ./.github/actions/x`
+# carries no owner/repo prefix and cannot match, and this repo's own `-public`
+# sibling is exempted by the same `(?!-public/)` lookahead used above.
+check BLOCK unresolvable-action 'wave-av/(?:(?!-public/)[\w.-])+/\.github/actions/' \
+  'Composite-action path in a non -public wave-av repo — unresolvable for a public consumer, 0 successful runs ever'
+
+# THIRD unresolvable shape, and the most dangerous of the three: a RUNTIME fetch of
+# a file out of a wave-av repo that is not this repo's own `-public` sibling, via
+# raw.githubusercontent.com. Unlike the two `uses:` shapes this one does NOT fail in
+# CI — the tree is valid, every gate reports green, and the 404 lands later, in a
+# consumer's environment, at the moment the script or hook actually runs. Anything
+# that swallows the failure (`2>/dev/null`, `|| true`, an unchecked response) turns
+# it from a crash into a silent wrong answer, which is strictly worse.
+#
+# Not anchored on a file extension or on any surrounding syntax: the URL is the
+# payload whether it sits in a shell variable, a TypeScript string literal, a JSON
+# hook config or a docs code fence. `(?!-public/)` exempts this repo's own published
+# raw content, and the pattern is URL-host-specific so an ordinary github.com
+# issue/PR hyperlink into a non -public repo — which resolves fine for anyone with
+# access and fetches nothing at run time — is untouched.
+check BLOCK unresolvable-raw-fetch 'raw\.githubusercontent\.com/wave-av/(?:(?!-public/)[\w.-])+/' \
+  'raw.githubusercontent.com fetch from a non -public wave-av repo — 404s at run time in a public consumer environment, never in CI'
+
 # Private WAVE repo/product names that must never appear in a public tree. The
 # names are NOT hardcoded here (this file is itself public) — they are supplied
 # at run time via GUARD_PRIVATE_REPOS (CI injects it from an org-level Actions

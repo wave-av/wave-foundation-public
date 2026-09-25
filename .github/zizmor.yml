@@ -122,20 +122,22 @@ rules:
       - release-egress-baseband.yml
       - release-container-pool.yml
   unpinned-uses:
-    # reusable-chassis-gate.yml references the FIRST-PARTY, same-repo composite action
-    # wave-av/wave-foundation/.github/actions/chassis-check by @main. The self-ref must stay
-    # @main so callers run the action version matching the reusable's main; SHA-pinning would
-    # desync/freeze them. First-party (this repo), not a third-party supply-chain dependency, so
-    # the unpinned-uses threat does not apply. (@main is required: a reusable runs in the caller's
-    # checkout and foundation is private.) Authorized by Jake (Option A).
+    # reusable-chassis-gate.yml references the FIRST-PARTY composite action
+    # `.github/actions/chassis-check`, which lives in the SAME repo as the reusable workflow
+    # itself, by @main. The self-ref must stay @main so callers run the action version matching
+    # the reusable's main; SHA-pinning would desync/freeze them. First-party (same repo), not a
+    # third-party supply-chain dependency, so the unpinned-uses threat does not apply. (@main is
+    # required rather than a local `./` path: a reusable workflow executes against the CALLER's
+    # checkout, so `./` would resolve into the caller's tree, not the defining repo's.)
+    # Authorized by Jake (Option A).
     #
-    # reusable-funnel-gate.yml references the FIRST-PARTY, same-repo composite action
-    # wave-av/wave-foundation/.github/actions/funnel-check by @main — identical pattern and identical
+    # reusable-funnel-gate.yml references the FIRST-PARTY composite action
+    # `.github/actions/funnel-check` in that same repo by @main — identical pattern and identical
     # rationale to the chassis-gate entry above (self-ref must track main; SHA-pinning would
     # desync/freeze callers; first-party, not third-party supply chain).
     #
-    # reusable-test-integrity-gate.yml references the FIRST-PARTY, same-repo composite action
-    # wave-av/wave-foundation/.github/actions/test-integrity-check by @main — same pattern, same
+    # reusable-test-integrity-gate.yml references the FIRST-PARTY composite action
+    # `.github/actions/test-integrity-check` in that same repo by @main — same pattern, same
     # rationale as the two entries above.
     ignore:
       - reusable-chassis-gate.yml
