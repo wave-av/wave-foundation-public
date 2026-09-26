@@ -2,7 +2,7 @@ name: Bot Review Gate
 
 # Lightweight API-only check that classifies bot findings and sets a commit status.
 # No checkout needed — runs in <30s using only GitHub API calls. Recognizes CodeRabbit,
-# Cursor, Greptile, Cubic, Sentry, GitHub Advanced Security, etc. Harvested from
+# Cursor, Cubic, Sentry, GitHub Advanced Security, etc. Harvested from
 # an internal WAVE repo and genericized. Register as a NON-required check first; after
 # validating, add "Bot Review Gate" to branch protection.
 #
