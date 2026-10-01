@@ -18,7 +18,7 @@ permissions: read-all
 
 jobs:
   analysis:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     # Scorecard publishes to the public OSSF API + code scanning — only meaningful on a
     # public repo. Skip cleanly on private (no perpetual red); auto-runs once open-sourced.
