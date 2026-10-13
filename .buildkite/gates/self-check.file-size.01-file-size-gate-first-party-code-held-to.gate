@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   self-check.yml / job file-size / step [2] "File-size gate (first-party code held to 800; vendored harvest exempt by path)"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+# LAW (rules/file-size-limits.md): a size gate is an architecture signal — DECOMPOSE, never
+# trim context to pass it. FIRST-PARTY code (the code we own, outside staging/) is held to a
+# hard 800 with an 85%-of-cap early warning, so the rethink happens before the wall. Vendored /
+# harvested material under staging/ is exempt BY PATH (faithful upstream > forced decomposition)
+# — a path rule, NOT a drift-prone hand-maintained enumeration. .sh is gated too. The
+# .filesize-allowlist remains only for a rare, auditable FIRST-PARTY exception (keep near-empty).
+CAP=800
+fail=0
+while IFS= read -r f; do
+  case "$f" in staging/*) continue ;; esac                            # vendored harvest — exempt by PATH
+  grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # rare, auditable first-party exception
+  n=$(wc -l < "$f")
+  if [ "$n" -gt "$CAP" ]; then
+    echo "::error::$f has $n lines (> $CAP) — DECOMPOSE: extract a cohesive module/stage. Do NOT trim comments/context to fit (rules/file-size-limits.md is LAW)."; fail=1
+  elif [ "$n" -ge $((CAP * 85 / 100)) ]; then
+    echo "::warning::$f has $n lines (>= 85% of the $CAP cap) — plan a module extraction NOW, before the wall. Never trim context to buy room (rules/file-size-limits.md)."
+  fi
+done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' '*.sh' | grep -vE '\.(types|d)\.ts$')
+if [ "$fail" = 0 ]; then echo "file-size gate passed (first-party cap $CAP; staging/ vendored exempt by path)"; fi
+exit "$fail"

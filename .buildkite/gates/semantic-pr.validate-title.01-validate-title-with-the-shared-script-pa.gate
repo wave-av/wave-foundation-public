@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   semantic-pr.yml / job validate-title / step [3] "Validate title with the shared script (parity with local hook)"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# gh-env-src: PR_TITLE=${{ github.event.pull_request.title }}
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+bash frameworks/hooks/validate-conventional-title.sh "$PR_TITLE"

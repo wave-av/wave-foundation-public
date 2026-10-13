@@ -1,0 +1,79 @@
+{
+  "$comment": "wave-foundation-public on Buildkite (shadow mode). Template custom: every step runs one checked-in .buildkite/scripts/*.sh, which runs the verbatim GitHub Actions gates under .buildkite/gates/. No step holds a credential. Fork pull requests are never built: the pipeline setting build_pull_request_forks is false (see .buildkite/README.md). Jobs that are parked (publish, event bots, a private-registry install, PR metadata) and the GH schedule leg are recorded in .buildkite/wave-ci.deferred.json with their reasons.",
+  "wave_ci": "296cc0cf4faf1f06d0acd4c2a767d6c111d2adf3",
+  "repo": "wave-av/wave-foundation-public",
+  "pipeline": "wave-foundation-public",
+  "template": "custom",
+  "visibility": "public",
+  "default_branch": "main",
+  "extra_steps": [
+    {
+      "key": "self-check-secret-scan",
+      "label": ":key: self-check: secret-scan (self-test, then scan)",
+      "script": ".buildkite/scripts/self-check-secret-scan.sh",
+      "timeout": 10
+    },
+    {
+      "key": "self-check-size",
+      "label": ":straight_ruler: self-check: file-size + context-integrity",
+      "script": ".buildkite/scripts/self-check-size.sh",
+      "timeout": 10
+    },
+    {
+      "key": "self-check-python",
+      "label": ":python: self-check: skill-validate, version-sync, claude-api-shape, gate-registry-drift",
+      "script": ".buildkite/scripts/self-check-python.sh",
+      "timeout": 15
+    },
+    {
+      "key": "self-check-node",
+      "label": ":node: self-check: status-context-conformance, product-registry-drift, capabilities-honesty",
+      "script": ".buildkite/scripts/self-check-node.sh",
+      "timeout": 15
+    },
+    {
+      "key": "gate-self-tests",
+      "label": ":test_tube: self-check: every frameworks/gates test script",
+      "script": ".buildkite/scripts/gate-self-tests.sh",
+      "timeout": 15
+    },
+    {
+      "key": "node-suites",
+      "label": ":node: self-check: every tracked test.mjs suite outside packages",
+      "script": ".buildkite/scripts/node-suites.sh",
+      "timeout": 20
+    },
+    {
+      "key": "lint",
+      "label": ":bash: lint: shellcheck (-S warning) + ruff (E4,E7,E9,F,W)",
+      "script": ".buildkite/scripts/lint.sh",
+      "timeout": 10,
+      "pr_only": true
+    },
+    {
+      "key": "pinact",
+      "label": ":pushpin: pinact: actions SHA-pinned + claude-chassis pin",
+      "script": ".buildkite/scripts/pinact.sh",
+      "timeout": 5
+    },
+    {
+      "key": "public-repo-guard",
+      "label": ":lock: public-repo-guard: gitleaks + content policy",
+      "script": ".buildkite/scripts/public-repo-guard.sh",
+      "timeout": 10
+    },
+    {
+      "key": "ratchet",
+      "label": ":chart_with_downwards_trend: ratchet: shell, python, cpp, rust, go, ruby",
+      "script": ".buildkite/scripts/ratchet.sh",
+      "timeout": 25,
+      "pr_only": true
+    },
+    {
+      "key": "zizmor",
+      "label": ":shield: zizmor: GitHub Actions security (offline audits)",
+      "script": ".buildkite/scripts/zizmor.sh",
+      "timeout": 10
+    }
+  ]
+}

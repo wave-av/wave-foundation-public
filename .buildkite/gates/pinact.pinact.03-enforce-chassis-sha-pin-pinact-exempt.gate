@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   pinact.yml / job pinact / step [5] "Enforce chassis SHA pin (pinact-exempt)"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+set -euo pipefail
+bad=0
+while IFS= read -r line; do
+  case "$line" in
+    *claude-chassis.yml@*) ref="${line##*claude-chassis.yml@}"; ref="${ref%%[[:space:]]*}" ;;
+    *) ref="" ;; # local ./ ref or missing @ref — never allowed for the chassis
+  esac
+  if ! printf '%s' "$ref" | grep -Eq '^[0-9a-f]{40}$'; then
+    echo "::error::claude-chassis.yml must be referenced by a 40-hex commit SHA, got: $line"
+    bad=1
+  fi
+done < <(grep -rnE '^[[:space:]]*(-[[:space:]]+)?uses:.*claude-chassis\.yml' .github/workflows || true)
+if [ "$bad" -ne 0 ]; then exit 1; fi
+echo "OK: every claude-chassis.yml reference is pinned to a full commit SHA."

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   semantic-pr.yml / job validate-title / step [5] "Ambiguity Gate (advisory)"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# gh-env-src: PR_BODY=${{ github.event.pull_request.body }}
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+if ! bash frameworks/ambiguity-gate/check-pr-ambiguity.sh "$PR_BODY"; then
+  echo "::notice::Ambiguity Gate (advisory): see the step log + frameworks/ambiguity-gate/README.md"
+fi

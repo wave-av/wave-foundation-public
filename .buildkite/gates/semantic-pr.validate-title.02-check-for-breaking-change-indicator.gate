@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   semantic-pr.yml / job validate-title / step [4] "Check for breaking change indicator"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# gh-env-src: PR_TITLE=${{ github.event.pull_request.title }}
+# gh-env-src: PR_BODY=${{ github.event.pull_request.body }}
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+HAS_BREAKING=false
+if echo "$PR_TITLE" | grep -qE '^(feat|fix|refactor|perf)(\([^)]+\))?!:'; then HAS_BREAKING=true; fi
+if echo "$PR_BODY" | grep -qE '^BREAKING CHANGE:'; then HAS_BREAKING=true; fi
+echo "has_breaking=$HAS_BREAKING" >> "$GITHUB_OUTPUT"
+if [ "$HAS_BREAKING" = "true" ]; then echo "::notice::This PR contains breaking changes"; fi

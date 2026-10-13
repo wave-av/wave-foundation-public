@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   self-check.yml / job version-sync / step [2] "Check version consistency"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+[ -f scripts/check-version-sync.py ] || { echo "::notice::version-sync script absent (public mirror) — skipping"; exit 0; }
+python3 scripts/check-version-sync.py

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   ratchet.yml / job rust / step [4] "Rust ratchet"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# gh-env-src: BASE_SHA=${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+[ -f scripts/rust-check-changed.sh ] || { echo "::notice::rust ratchet script absent (public mirror) — skipping"; exit 0; }
+bash scripts/rust-check-changed.sh --base "${BASE_SHA:-origin/main}" --ci

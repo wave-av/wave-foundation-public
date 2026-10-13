@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   self-check.yml / job gate-self-tests / step [4] "Run every frameworks/gates/test-*.sh"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+set -euo pipefail
+mapfile -t TESTS < <(git ls-files 'frameworks/gates/test-*.sh' | sort)
+if [ "${#TESTS[@]}" -eq 0 ]; then
+  echo "::error::no tracked frameworks/gates/test-*.sh found — the discovery glob is broken or the suite was deleted. Refusing to report green on zero tests."
+  exit 1
+fi
+echo "discovered ${#TESTS[@]} gate self-test(s):"
+printf '  %s\n' "${TESTS[@]}"
+fail=0
+for t in "${TESTS[@]}"; do
+  echo "::group::$t"
+  if bash "$t"; then
+    echo "PASS  $t"
+  else
+    echo "::error::$t FAILED — the gate it covers is broken as of this commit, not at the next rule promotion."
+    fail=1
+  fi
+  echo "::endgroup::"
+done
+[ "$fail" = 0 ] && echo "gate self-tests passed (${#TESTS[@]}/${#TESTS[@]})"
+exit "$fail"

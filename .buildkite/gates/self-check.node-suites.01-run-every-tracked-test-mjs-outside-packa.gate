@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   self-check.yml / job node-suites / step [3] "Run every tracked *.test.mjs outside packages/"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+set -euo pipefail
+# `mapfile < <(git ls-files …)` cannot propagate the lister's exit status — the #944 defect
+# class. It is safe HERE, and only here, because a failed lister yields an empty array and
+# the zero-length check below turns that into a hard failure rather than a green run.
+mapfile -t SUITES < <(git ls-files '*.test.mjs' | grep -v '^packages/' | sort)
+if [ "${#SUITES[@]}" -eq 0 ]; then
+  echo "::error::no tracked *.test.mjs found outside packages/ — the discovery glob is broken, the lister failed, or the suites were deleted. Refusing to report green on zero tests."
+  exit 1
+fi
+echo "discovered ${#SUITES[@]} suite(s):"
+printf '  %s\n' "${SUITES[@]}"
+# PER-SUITE, not one aggregate run (#964). The zero-length check above closes "nobody runs
+# the suites"; it cannot see a suite that IS run and registers no tests — an accidental
+# early return, a top-level guard that skips registration, a refactor that leaves the file
+# importable and empty. `node --test` collects nothing from it, the other suites pass, and
+# the job is green. The file then reads on the repo as coverage while providing none.
+# Two zeros that must not look alike: "asserts nothing" and "passed".
+#
+# A suite that FAILS and a suite that is EMPTY are also different findings, so they are
+# reported separately and never collapsed into one bucket.
+failed=()
+empty=()
+total=0
+for s in "${SUITES[@]}"; do
+  # rc straight off the command substitution — a pipeline here would report the wrong
+  # status, and `set -e` must not abort the loop before the summary is printed.
+  # rc straight off the command substitution — a pipeline here would report the wrong
+  # status, and `set -e` must not abort the loop before the summary is printed.
+  out="$(node --test --test-reporter=tap --test-timeout=180000 "$s" 2>&1)" && rc=0 || rc=$?
+  # `# tests N` CANNOT distinguish these: when a file registers nothing, node reports the
+  # FILE ITSELF as the single test, so a hollow suite still prints `# tests 1`. The real
+  # discriminator is the subtest NAME — a hollow file's only subtest is named exactly the
+  # path we passed, whereas a real suite's subtests carry test names:
+  #   hollow  ->  # Subtest: hollow.test.mjs      (the argv path)
+  #   real    ->  # Subtest: a                    (the test's name)
+  # Node names that file-level subtest DIFFERENTLY depending on its version — node 20 uses
+  # the resolved absolute path, node 22/24 the relative one (measured in Docker across all
+  # three). This used to string-match an enumeration of the spellings it knew, which is a
+  # fail-open waiting to happen: the drill validating this step runs under a DIFFERENT node
+  # than the step does (gate-self-tests has no setup-node; this job pins 24), so a runner
+  # image bump or a third spelling would silence the check while the drill stayed green.
+  # tap-count-real-tests.mjs stops enumerating and canonicalises both sides instead, so any
+  # spelling of the same file compares equal — including ones that don't exist yet (#1047).
+  #
+  # Fail LOUD if the helper is missing or errors: an empty `real` must never be read as
+  # "0 real tests", which would report every suite as hollow, or worse be papered over.
+  if ! real="$(printf '%s\n' "$out" | node scripts/tap-count-real-tests.mjs "$s")"; then
+    echo "::error::scripts/tap-count-real-tests.mjs failed for $s — refusing to score this suite"
+    exit 1
+  fi
+  total=$((total + real))
+  if [ "$rc" -ne 0 ]; then
+    failed+=("$s")
+    printf '  FAIL  %-58s (%s test(s), exit %s)\n' "$s" "$real" "$rc"
+    printf '%s\n' "$out" | tail -25 | sed 's/^/        | /'
+  elif [ "$real" -eq 0 ]; then
+    # A suite can legitimately register nothing and still assert: a self-contained harness
+    # whose EXIT CODE is the assertion (scripts/gate-scope-conformance.test.mjs runs mutant
+    # scans this way). Those are real coverage — `node --test` surfaces a non-zero exit as a
+    # failing file-level subtest — but they are indistinguishable from a hollow file, since
+    # both register 0 tests and both exit 0 when healthy. So the exception must be
+    # DECLARED, not inferred: silence stays a failure, and the opt-out is one reviewable
+    # line in the file itself.
+    if grep -qF 'node-suites: exit-code-harness' "$s"; then
+      printf '  ok    %-58s exit-code harness (declared)\n' "$s"
+    else
+      empty+=("$s")
+      printf '  EMPTY %-58s registered 0 tests\n' "$s"
+    fi
+  else
+    printf '  ok    %-58s %s test(s)\n' "$s" "$real"
+  fi
+done
+echo "total registered tests: $total across ${#SUITES[@]} suite(s)"
+# Guard the count BEFORE expanding — `"${arr[@]}"` on an empty array is an unbound-variable
+# error under `set -u` on bash 3.2, which is what the drill runs on.
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "::error::${#failed[@]} suite(s) FAILED: ${failed[*]}"
+  exit 1
+fi
+if [ "${#empty[@]}" -gt 0 ]; then
+  echo "::error::${#empty[@]} suite(s) registered ZERO tests — a discovered suite that asserts nothing reads as coverage and provides none. Delete the file or give it real assertions: ${empty[*]}"
+  exit 1
+fi

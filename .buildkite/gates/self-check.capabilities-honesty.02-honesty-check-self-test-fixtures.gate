@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   self-check.yml / job capabilities-honesty / step [4] "Honesty check self-test (fixtures)"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+npx tsx frameworks/platform-registry/scripts/check-honesty.ts --self-test

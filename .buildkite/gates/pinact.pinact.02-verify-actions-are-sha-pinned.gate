@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Verbatim `run:` body of GitHub Actions step
+#   pinact.yml / job pinact / step [4] "Verify Actions are SHA-pinned"
+# at wave-foundation-public origin/main d922e69. Do not edit by hand: re-extract from the workflow (see .buildkite/README.md).
+# gh-shell: default
+# gh-env-src: GITHUB_TOKEN=${{ github.token }}
+# Run by .buildkite/scripts/lib/common.sh as `bash -e <this file>` (GH default shell), or `bash -eo pipefail` when the step set `shell: bash`.
+pinact run --check --verify

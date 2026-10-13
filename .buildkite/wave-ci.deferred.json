@@ -1,0 +1,96 @@
+{
+  "$comment": "NOT RENDERED. wave-ci reads only .buildkite/wave-ci.json (its top-level keys are a closed set, so the parked list cannot live there). This file records every GitHub Actions job of this repo that has no running Buildkite step yet, with its reason and blocker, so nothing is dropped. deferred_extra_steps: complete extra_steps entries, ready to move back into wave-ci.json once the blocker lands. deferred_schedules: the GH `schedule:` legs, as wave-ci `schedules` entries. parked_jobs: jobs with no Buildkite step at all (publish, event bots, private registry), each class parked by policy until it is named and authorized. library_jobs: jobs of reusable workflows (on: workflow_call only), which never run on this repository's own events; other repositories call them. See .buildkite/README.md for the parity table.",
+  "deferred_extra_steps": [
+    {
+      "reason": "semantic-pr reads the PR title and body. The host-fetched PR metadata file reaches only the per-job queue, and the pinned renderer routes a step there only when it declares a secret; this step holds none, so it would fail every PR build at 'no /run/wave-ci/pr.json'.",
+      "blocked_on": "wave-ci: route a secret-free PR-metadata step to the per-job queue, and a pr-metadata allowlist row for (wave-foundation-public, pr-metadata)",
+      "replaces": ["semantic-pr.yml validate-title"],
+      "step": {
+        "key": "pr-metadata",
+        "label": ":memo: semantic-pr: conventional title, breaking-change, ambiguity (advisory)",
+        "script": ".buildkite/scripts/pr-metadata.sh",
+        "timeout": 5,
+        "pr_only": true
+      }
+    }
+  ],
+  "deferred_schedules": [
+    {
+      "reason": "GH scorecard.yml runs weekly (Mondays 06:24 UTC), on push to main and on branch_protection_rule. Its job is parked (see parked_jobs: it publishes results and uploads SARIF), so there is no step for a schedule to select yet. Becomes a `schedules` entry in wave-ci.json together with the scorecard step.",
+      "blocked_on": "the scorecard step (parked_jobs, publish class)",
+      "schedule": {
+        "name": "scorecard-weekly",
+        "pipeline": "wave-foundation-public",
+        "label": "weekly OpenSSF Scorecard, Mondays 06:24 UTC (GH scorecard.yml schedule)",
+        "cronline": "24 6 * * 1",
+        "branch": "main",
+        "steps": ["scorecard"]
+      }
+    }
+  ],
+  "parked_jobs": [
+    {
+      "workflow": "release.yml",
+      "jobs": ["classify", "major-tag-safety", "release", "sbom"],
+      "class": "publish",
+      "reason": "Runs on tag pushes (v*) and publishes a GitHub release with notes and an attached SBOM. Publish jobs are parked until named and authorized; Buildkite tag builds are also off for this pipeline (build_tags false)."
+    },
+    {
+      "workflow": "changelog-unreleased.yml",
+      "jobs": ["refresh"],
+      "class": "publish",
+      "reason": "On push to main it mints a release-bot App token and opens an auto-merge PR with the regenerated changelog: a write to the repository. Parked with the publish class. On this mirror the App is not configured, so the GH job is a no-op today."
+    },
+    {
+      "workflow": "scorecard.yml",
+      "jobs": ["analysis"],
+      "class": "publish",
+      "reason": "Publishes results to the OpenSSF Scorecard API and uploads SARIF to GitHub code scanning (security-events: write), and needs a GitHub token. Parked with the publish class; its weekly schedule is in deferred_schedules."
+    },
+    {
+      "workflow": "bot-review-gate.yml",
+      "jobs": ["resolve", "tally", "liveness", "verdict"],
+      "class": "event-bot",
+      "reason": "Triggered by issue_comment, pull_request_review and pull_request_review_comment events, which a Buildkite webhook does not deliver. Waits on the GitHub-event bridge. It is also a reusable workflow (workflow_call) for other repositories."
+    },
+    {
+      "workflow": "pr-agent.yml",
+      "jobs": ["pr_agent"],
+      "class": "event-bot",
+      "reason": "Comment-triggered review bot that posts to the PR and needs a model API credential. Waits on the GitHub-event bridge and a secrets decision."
+    },
+    {
+      "workflow": "governance-enforce.yml",
+      "jobs": ["enforce"],
+      "class": "private-registry",
+      "reason": "Installs @wave-av/governance from GitHub Packages, which is billing-blocked (E403). The package will come from the self-hosted registry, which is not live yet; no workaround is used. Needs a read credential decision for a public repository's pipeline as well."
+    }
+  ],
+  "library_jobs": [
+    {
+      "workflow": "checks.yml",
+      "jobs": ["checks", "claude-config", "skill-validate", "claude-api-shape", "claude-api-cache", "verify-routes", "voice", "billing-contract", "meter-registry", "dependency-review", "pr-body", "changelog", "ci-efficiency"],
+      "reason": "on: workflow_call only. Nothing in this repository calls it; other repositories do (uses: wave-av/wave-foundation-public/.github/workflows/checks.yml@main), on their own runners and events."
+    },
+    {
+      "workflow": "image-content-gate.yml",
+      "jobs": ["gate"],
+      "reason": "on: workflow_call only; called by other repositories that build container images."
+    },
+    {
+      "workflow": "io-triage.yml",
+      "jobs": ["triage"],
+      "reason": "on: workflow_call only; called by other repositories on issue events."
+    },
+    {
+      "workflow": "reusable-bot-token.yml",
+      "jobs": ["generate"],
+      "reason": "on: workflow_call only; mints a GitHub App token for the calling repository."
+    },
+    {
+      "workflow": "reusable-changelog.yml",
+      "jobs": ["changelog"],
+      "reason": "on: workflow_call only; generates and publishes release notes for the calling repository."
+    }
+  ]
+}
