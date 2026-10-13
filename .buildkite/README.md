@@ -139,6 +139,12 @@ runners. There is nothing for this pipeline to run in their place.
   each verbatim gate prints its "absent (public mirror)" notice and exits 0. The tool installs still run.
 - `harden-runner` steps are dropped (the guest firewall replaces them); checkouts are the agent's.
 
+## Red on GitHub main today
+
+On `main` at d922e69 (2026-10-08) GitHub reports `self-check / gate-self-tests` and `zizmor` as failed;
+every other ported job passed. The gates here are verbatim copies, so the soak should show the same red; a fix
+belongs in the workflow or the files it checks, not in these copies.
+
 ## Credentials
 
 None. No step declares a secret and no secrets-allowlist row is needed. Decisions that would add one, each
