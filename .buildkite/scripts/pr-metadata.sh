@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Buildkite step pr-metadata (DEFERRED, pr_only, see wave-ci.deferred.json): replaces semantic-pr / validate-title,
+# Buildkite step pr-metadata (DEFERRED, pr_only, see the deferred settings file): replaces semantic-pr / validate-title,
 # which reads PR facts Buildkite does not give a job (title and body).
 #
 # Where the facts would come from: a read-only PR metadata file, /run/wave-ci/pr.json, that the CI host fetches with

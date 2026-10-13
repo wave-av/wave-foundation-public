@@ -21,7 +21,7 @@ checked-in `.buildkite/wave-ci.sh` before anything else, so a fork build would r
 them. The fences, in order:
 
 1. **The pipeline setting `build_pull_request_forks: false`.** This is the one that matters: with it off,
-   Buildkite never creates a build for a fork PR. The operator tool that creates pipelines (wave-ci RUN-229)
+   Buildkite never creates a build for a fork PR. The operator tool that creates pipelines
    sends it explicitly, refuses before any write if its payload has it on, reads the pipeline back after the
    write and fails if Buildkite turned it on, and its verify mode fails on a pipeline where someone switched
    it on by hand. At the pinned commit that tool still refuses every public repository outright, so this
@@ -40,7 +40,7 @@ No step of this pipeline holds a credential, so there is nothing for a build to 
 
 | path | role |
 |---|---|
-| `pipeline.yml`, `wave-ci.sh`, `wave-ci.json` | The wave-ci template form: the thin uploader and the fixed shim (byte-identical to the template kit at the pin), and the settings: template `custom`, `wave_ci` pinned to `296cc0cf4faf1f06d0acd4c2a767d6c111d2adf3`, `visibility: public`. |
+| `pipeline.yml`, `wave-ci.sh`, `wave-ci.json` | The pipeline template form: the thin uploader and the fixed shim (byte-identical to the template kit at the pin), and the settings: template `custom`, `wave_ci` pinned to `296cc0cf4faf1f06d0acd4c2a767d6c111d2adf3`, `visibility: public`. |
 | `wave-ci.deferred.json` | NOT rendered. Every job with no running step: a parked step entry (ready to move back), the GH schedule leg, the parked jobs by class, and the reusable-workflow jobs. |
 | `scripts/<step>.sh` | One script per Buildkite step. Each sets up its tools, then runs its gates. `pr-metadata.sh` is written but parked. |
 | `scripts/lib/common.sh` | Strict mode, credential hygiene, the fork tripwire, the GH-context emulation (`bk_gh_env`), the gate runner and summary. |

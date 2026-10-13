@@ -14,7 +14,7 @@ bk_gate "install shellcheck-py (pinned)" ratchet.shell.01-install-shellcheck-py-
 export PATH="$HOME/.local/bin:$PATH"
 bk_gate 'shell ratchet' ratchet.shell.02-shell-ratchet.gate
 bk_gate 'python ratchet' ratchet.python.01-python-ratchet.gate
-# GH apt-installs cppcheck on ubuntu-24.04 (2.13.0); the golden image bakes the same Ubuntu 24.04 package.
+# GH apt-installs cppcheck on ubuntu-24.04 (2.13.0); the CI image bakes the same Ubuntu 24.04 package.
 bk_gate 'cpp ratchet' ratchet.cpp.02-cpp-ratchet.gate
 bk_gate 'rust ratchet' ratchet.rust.02-rust-ratchet.gate
 bk_gate 'go ratchet' ratchet.go.01-go-ratchet.gate

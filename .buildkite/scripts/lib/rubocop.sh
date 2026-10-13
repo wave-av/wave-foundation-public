@@ -2,8 +2,8 @@
 # rubocop for the ruby ratchet leg, pinned by sha256. SOURCED by .buildkite/scripts/ratchet.sh after lib/common.sh.
 #
 # GH ratchet.yml `ruby` runs `gem install --user-install --no-document rubocop` (unpinned, whatever RubyGems
-# resolves that day). The golden image bakes Ruby 3.3.12 as the default `ruby` but not rubocop (wave-ci
-# docs/toolchain.md: "rubocop not yet baked ... next step is a hash-locked gem manifest"). This is that manifest,
+# resolves that day). The CI image bakes Ruby 3.3.12 as the default `ruby` but not rubocop, so this is a
+# hash-locked gem manifest,
 # per job: every .gem is downloaded from rubygems.org, checked against the sha256 below, and only then installed
 # with `gem install --local --ignore-dependencies --user-install`, so nothing is resolved at run time and no
 # unverified byte is installed. --user-install puts the bin dir where the verbatim gate looks
