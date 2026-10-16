@@ -33,7 +33,7 @@ Two independent layers — pick what you need:
 
 ## License
 
-[Apache License 2.0](LICENSE) — permissive, with an explicit patent grant. Copyright WAVE Online LLC.
+[Apache License 2.0](LICENSE) — permissive, with an explicit patent grant. Copyright WAVE Online, LLC.
 
 ## Contributing
 
