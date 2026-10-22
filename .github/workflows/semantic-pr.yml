@@ -29,7 +29,7 @@ concurrency:
 jobs:
   validate-title:
     name: Validate PR Title
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read # REQUIRED for actions/checkout in the parity step — a job-level permissions block
       # replaces the workflow default entirely, so without this the token has no repo access and the
