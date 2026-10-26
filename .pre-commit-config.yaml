@@ -59,7 +59,7 @@ repos:
 
   # Docs hygiene.
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.23.2
+    rev: v0.23.3
     hooks:
       - id: markdownlint-cli2
         # CHANGELOG.md is git-cliff-generated from raw commit-message content (same rationale as
