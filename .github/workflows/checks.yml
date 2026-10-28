@@ -1254,7 +1254,7 @@ jobs:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
       - run: pip install pyyaml
       - name: Skill frontmatter gate
         run: |
@@ -1700,7 +1700,7 @@ jobs:
         with:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with: { python-version: "3.14" }
+        with: { python-version: "3.15" }
       - name: Billing & Settlement contract gate
         run: |
           python3 -m pip install --quiet pyyaml
@@ -1727,7 +1727,7 @@ jobs:
         with:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with: { python-version: "3.14" }
+        with: { python-version: "3.15" }
       - name: Canonical meter-registry gate
         run: |
           python3 -m pip install --quiet pyyaml
