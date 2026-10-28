@@ -172,7 +172,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "26"
       - name: Manifest ↔ chassis WAVE_PRODUCTS parity
         run: |
           [ -f staging/golden-paths-scaffolds/new-subdomain-app/validators/check-registry.mjs ] || { echo "::notice::registry validator absent (public mirror) — skipping"; exit 0; }
@@ -190,7 +190,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "26"
       - name: Install tsx
         run: npm install --no-save --no-audit --no-fund tsx@4
       - name: Honesty check self-test (fixtures)
@@ -287,7 +287,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "26"
       - name: Run every tracked *.test.mjs outside packages/
         run: |
           set -euo pipefail
