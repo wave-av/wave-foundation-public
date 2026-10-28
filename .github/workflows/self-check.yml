@@ -94,7 +94,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
       - run: pip install pyyaml
       - name: Validate skill frontmatter
         run: python3 scripts/validate-skills.py
@@ -137,7 +137,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
       - run: pip install pyyaml
       - name: Gate registry ↔ pre-commit parity
         run: python3 frameworks/gates/emit.py --check .pre-commit-config.yaml
@@ -224,7 +224,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
       # test-workflow-policy.sh pip-installs pyyaml itself when it's missing. Install it up front so a
       # PyPI hiccup fails as its own loud step instead of surfacing as a confusing gate failure.
       - run: pip install pyyaml
