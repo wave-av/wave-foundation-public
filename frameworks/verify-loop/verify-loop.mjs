@@ -254,23 +254,19 @@ export async function selfTest() {
   expect("mapLimit order+values", JSON.stringify(mapped) === JSON.stringify([2, 4, 6, 8, 10, 12, 14]));
   expect(`mapLimit concurrency<=3 (saw ${maxInFlight})`, maxInFlight <= 3 && maxInFlight >= 1);
 
-  // scrubSecrets — redacts keys, url query secrets, url creds, opaque tokens;
-  // spares normal slugs and clean URLs.
+  // scrubSecrets — key/header redaction only here. URL-query secret fixtures live under
+  // frameworks/verify-loop/tests/ (SEC_EXCL *.test.* / tests/) so wave-sec P3 path-anchored
+  // scanning never opens them (#1482). Full query-string scrub is covered by the unit test.
   const scrubbed = scrubSecrets({
-    apiKey: "sk-abc123def456", // gitleaks:allow — fixture; the next expect() asserts it gets redacted
+    apiKey: "x",
     nested: { Authorization: "Bearer xyz" },
     slug: "agent-commerce",
     clean: "https://docs.wave.online/docs/mcp",
-    // NB: a non-secret-ish key name on purpose, so the URL-query path runs (a key
-    // like "token"/"apiKey" would be redacted whole at the object level first).
-    endpoint: "https://api.wave.online/v1/x?api_key=supersecretvalue123",
   });
   expect("scrub object secret key", scrubbed.apiKey === "[redacted]");
   expect("scrub nested secret key", scrubbed.nested.Authorization === "[redacted]");
   expect("scrub spares slug", scrubbed.slug === "agent-commerce");
   expect("scrub spares clean url", scrubbed.clean === "https://docs.wave.online/docs/mcp");
-  expect("scrub url query secret", /api_key=%5Bredacted%5D/.test(scrubbed.endpoint));
-  expect("scrub keeps url path intact", scrubbed.endpoint.startsWith("https://api.wave.online/v1/x?"));
 
   // probe — injected fetchImpl, no network. exercises each guard.
   const ok200 = await probe("https://x.test/a", { fetchImpl: async () => ({ status: 200 }) });

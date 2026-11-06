@@ -3,7 +3,7 @@
 # Posture: the CI gate (zizmor.yml) runs the `regular` persona and is clean (0 findings). The
 # stricter `auditor` persona surfaces advisory items; these were triaged:
 #   - excessive-permissions: FIXED — workflow-level writes moved to job-level least-privilege
-#     (automerge, semantic-pr, cubic-review) so each job gets only the scopes it uses.
+#     (automerge, semantic-pr) so each job gets only the scopes it uses.
 #   - secrets-outside-env: accepted below — these secrets are third-party API keys / App inputs,
 #     not deployment credentials; a protected GitHub Environment adds no real safety here.
 #   - obfuscation: accepted below — dynamic secret indexing is the intentional per-bot parameterization.
@@ -27,10 +27,8 @@ rules:
     # (owner+repositories) with contents+PR+workflows write — the App's scope is the control, and
     # the token is narrowed to a single repo. Apply-gated; never runs on untrusted input.
     #
-    # obs-wire.yml: mints the issue-ops-bot token scoped to ONLY wave-foundation (owner+repositories)
-    # read, purely so this reusable workflow can fetch the SSoT wire-sentry-dsn.sh from the PRIVATE
-    # foundation repo (a reusable workflow runs with the caller's GITHUB_TOKEN, which can't read another
-    # private repo). App-level least-privilege is the control; single-repo scope. Same precedent as io-*.
+    # obs-wire.yml no longer mints a token (Sentry retired 2026-09-23; the job is now a no-op) — its
+    # entry was removed from the ignore list below.
     #
     # public-guard-drift.yml: mints a wave-av-release-bot token to open the vendored-guard sync PRs.
     # `repositories:` narrowing IS applied (the 28 guard-vendoring repos, explicitly listed) — only the
@@ -41,7 +39,7 @@ rules:
     # including wave-foundation-public, which this same App writes to fine from open-core-publish.yml.
     # 403 (not 404) means the token reached each repo and lacked contents:write, i.e. the narrowing did
     # not do what its name implies. This is the SAME failure the io-* note above predicted; that note
-    # was the standing precedent, this is the receipt. Root cause open: claude-workstation#1373.
+    # was the standing precedent, this is the receipt. Root cause open: private-repo#1373.
     ignore:
       - reusable-bot-token.yml
       - open-core-publish.yml
@@ -50,7 +48,6 @@ rules:
       - io-assess.yml
       - io-action.yml
       - io-resolve.yml
-      - obs-wire.yml
   overprovisioned-secrets:
     # Dynamic secret names (per-bot <PREFIX>_<BOT>_APP_ID / _PRIVATE_KEY) are the documented,
     # intentional parameterization — not blanket `secrets: inherit`.
@@ -70,7 +67,6 @@ rules:
     # Third-party API key / App private key passed as an action input or step env — not a
     # deployment credential, so a protected GitHub Environment adds no meaningful protection.
     ignore:
-      - cubic-review.yml
       - changelog-unreleased.yml
       - reusable-bot-token.yml
   excessive-permissions:
@@ -121,25 +117,12 @@ rules:
       - release-whip-publish.yml
       - release-egress-baseband.yml
       - release-container-pool.yml
-  unpinned-uses:
-    # reusable-chassis-gate.yml references the FIRST-PARTY composite action
-    # `.github/actions/chassis-check`, which lives in the SAME repo as the reusable workflow
-    # itself, by @main. The self-ref must stay @main so callers run the action version matching
-    # the reusable's main; SHA-pinning would desync/freeze them. First-party (same repo), not a
-    # third-party supply-chain dependency, so the unpinned-uses threat does not apply. (@main is
-    # required rather than a local `./` path: a reusable workflow executes against the CALLER's
-    # checkout, so `./` would resolve into the caller's tree, not the defining repo's.)
-    # Authorized by Jake (Option A).
-    #
-    # reusable-funnel-gate.yml references the FIRST-PARTY composite action
-    # `.github/actions/funnel-check` in that same repo by @main — identical pattern and identical
-    # rationale to the chassis-gate entry above (self-ref must track main; SHA-pinning would
-    # desync/freeze callers; first-party, not third-party supply chain).
-    #
-    # reusable-test-integrity-gate.yml references the FIRST-PARTY composite action
-    # `.github/actions/test-integrity-check` in that same repo by @main — same pattern, same
-    # rationale as the two entries above.
-    ignore:
-      - reusable-chassis-gate.yml
-      - reusable-funnel-gate.yml
-      - reusable-test-integrity-gate.yml
+  # unpinned-uses: NO file-wide ignore here (was reusable-chassis-gate.yml / reusable-funnel-gate.yml
+  # / reusable-test-integrity-gate.yml / reusable-perf-budget-api-gate.yml, whole-file — #1454 finding
+  # 6: a filename-wide ignore silences the check for EVERY `uses:` in that workflow, so a future
+  # mutable third-party action added to any of those files would bypass the check unnoticed). Each of
+  # the four files has exactly one unpinned self-reference (a first-party, same-repo composite action
+  # that must track @main so callers run the action version matching the reusable's main — SHA-pinning
+  # would desync/freeze them; authorized by Jake, Option A) — suppressed with a line-scoped
+  # `# zizmor: ignore[unpinned-uses]` comment directly on that `uses:` line instead, so every OTHER
+  # `uses:` in those files stays covered by the check.

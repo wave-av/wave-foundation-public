@@ -23,19 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
       # Runs the CANONICAL gate script — the same file a human runs at commit time, so "passed
       # locally" and "passed in CI" are one claim, not two that happen to agree. The pattern and the
       # allowlist pipeline deliberately do NOT appear here: a copy in this file is what drifted into
       # a fail-open (#926). See frameworks/gates/scripts/secret-scan.sh.
-      # The self-test runs FIRST and in the same job, deliberately. The gate's failure mode is
+      # The self-test runs FIRST, in the same job. The gate's failure mode is
       # SILENCE — until #928 a blank line in the allowlist made it report clean against a live
       # credential — so a green "Secret scan" step is only evidence if the thing that produced it
-      # has been shown to still detect. Ordering it first means a broken gate fails as a broken
-      # gate, rather than passing as a clean repo.
+      # has been shown to still detect. A broken gate then fails as broken, not as a clean repo.
       - name: Secret-scan self-test (proves the gate still detects)
         run: bash frameworks/gates/test-secret-scan.sh
       - name: Secret scan (self, allowlist-aware)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: bash frameworks/gates/scripts/secret-scan.sh
   file-size:
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -94,10 +98,12 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15"
+          python-version: "3.14"
       - run: pip install pyyaml
       - name: Validate skill frontmatter
         run: python3 scripts/validate-skills.py
+  # runner-secret-allowlist-schema lives in runner-secret-allowlist-schema.yml: its test and fixture
+  # stay private, and this file publishes to the open-core mirror (see that file's header).
   version-sync:
     # plugin.json version == marketplace.json version == latest git tag (catches manifest drift —
     # e.g. a release tagged while the manifests were left behind). Maintained by scripts/release.sh.
@@ -137,7 +143,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15"
+          python-version: "3.14"
       - run: pip install pyyaml
       - name: Gate registry ↔ pre-commit parity
         run: python3 frameworks/gates/emit.py --check .pre-commit-config.yaml
@@ -224,14 +230,18 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15"
+          python-version: "3.14"
       # test-workflow-policy.sh pip-installs pyyaml itself when it's missing. Install it up front so a
       # PyPI hiccup fails as its own loud step instead of surfacing as a confusing gate failure.
       - run: pip install pyyaml
       - name: Run every frameworks/gates/test-*.sh
         run: |
           set -euo pipefail
-          mapfile -t TESTS < <(git ls-files 'frameworks/gates/test-*.sh' | sort)
+          # `mapfile` is bash 4+. This runner has 5.x, so this was latent, not broken — but a
+          # `.sh`-only portability lint never sees shell embedded in YAML, so the class survives
+          # every sweep. `X=()` first: `${#X[@]}` is then 0, not unbound, under `set -u` on 3.2.
+          TESTS=()
+          while IFS= read -r t; do TESTS+=("$t"); done < <(git ls-files 'frameworks/gates/test-*.sh' | sort)
           if [ "${#TESTS[@]}" -eq 0 ]; then
             echo "::error::no tracked frameworks/gates/test-*.sh found — the discovery glob is broken or the suite was deleted. Refusing to report green on zero tests."
             exit 1
@@ -291,10 +301,11 @@ jobs:
       - name: Run every tracked *.test.mjs outside packages/
         run: |
           set -euo pipefail
-          # `mapfile < <(git ls-files …)` cannot propagate the lister's exit status — the #944 defect
+          # `… < <(git ls-files …)` cannot propagate the lister's exit status — the #944 defect
           # class. It is safe HERE, and only here, because a failed lister yields an empty array and
           # the zero-length check below turns that into a hard failure rather than a green run.
-          mapfile -t SUITES < <(git ls-files '*.test.mjs' | grep -v '^packages/' | sort)
+          SUITES=()
+          while IFS= read -r s; do SUITES+=("$s"); done < <(git ls-files '*.test.mjs' | grep -v '^packages/' | sort)
           if [ "${#SUITES[@]}" -eq 0 ]; then
             echo "::error::no tracked *.test.mjs found outside packages/ — the discovery glob is broken, the lister failed, or the suites were deleted. Refusing to report green on zero tests."
             exit 1

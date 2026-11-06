@@ -22,11 +22,11 @@ jobs:
   zizmor:
     # ubuntu-latest, NOT blacksmith: this job now reads secrets.DOPPLER_TOKEN, and the runner rule
     # (rules/workflow-authoring.md ⛔) routes anything touching a production secret — Doppler
-    # explicitly named — to GitHub-hosted only. Same placement as sentry-coverage-drift.yml.
+    # explicitly named — to GitHub-hosted only.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -34,19 +34,19 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15"
+          python-version: "3.14"
       - run: pip install zizmor==1.25.2
       - uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
       # Online audits (impostor-commit, known-vulnerable actions via GHSA) need a token that can
-      # ALSO read the PRIVATE org sibling claude-workstation — wave-sec-gate.yml's `uses:` ref.
+      # ALSO read the PRIVATE org sibling private-repo — wave-sec-gate.yml's `uses:` ref.
       # The repo-scoped github.token 404s on it, and impostor-commit dies with a FATAL
       # "no audit was performed" error — not a finding, so neither .github/zizmor.yml rules nor
       # inline `# zizmor: ignore[...]` comments can suppress it (verified on 1.25.2 and 1.29.0).
       # Excluding that file from online audits would leave the org's only cross-repo secret
       # hand-off as the one ref never verified against its callee (flagged in review on #1141).
-      # Instead, source the org-read GH_PAT_WORKFLOW from Doppler — same project/config as
-      # sentry-coverage-drift.yml and the wave-sec-gate callee itself — so EVERY workflow,
-      # wave-sec-gate.yml included, gets the full online audit set.
+      # Instead, source the org-read GH_PAT_WORKFLOW from Doppler — same project/config as the
+      # wave-sec-gate callee itself — so EVERY workflow, wave-sec-gate.yml included, gets the
+      # full online audit set.
       #
       # CREDENTIAL ISOLATION (all flagged in review on #1141): `doppler secrets get` (single
       # secret), NOT `doppler run` (full wave/prd injection); the fetch happens IN-PROCESS in the
@@ -86,14 +86,31 @@ jobs:
       # offline coverage of every workflow while online audits pause — then revert once wave/prd
       # is reachable again. The merge path already depends on Doppler either way: the
       # wave-sec-gate check on every PR sources the same PAT from the same config.
+      # WAVE GitHub App token (repo-scoped), replacing the over-scoped PAT. No PAT fallback.
+      - name: Mint WAVE GitHub App token
+        id: app-token
+        # Mirror and fork PRs have no App secrets: let the audit step's existing mirror/fork
+        # branches handle them. A trusted trigger with no App token fails loudly there.
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.WAVE_GH_APP_ID }}
+          private-key: ${{ secrets.WAVE_GH_APP_PRIVATE_KEY }}
+          permission-contents: read
+          owner: wave-av
+          repositories: wave-foundation,private-repo
+
       - name: Audit workflows (PAT fetched in-process, masked, never persisted)
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
         run: |
           offline=false
-          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+          if [ -n "${APP_TOKEN:-}" ]; then
+            export GH_TOKEN="$APP_TOKEN"
+          elif [ -z "${DOPPLER_TOKEN:-}" ]; then
             if [ ! -f .github/workflows/wave-sec-gate.yml ]; then
               echo "::notice::DOPPLER_TOKEN unavailable (public mirror) — auditing with the repo-scoped github.token"
             elif [ "${IS_FORK_PR:-}" = "true" ]; then
@@ -104,16 +121,10 @@ jobs:
               exit 1
             fi
           else
-            token="$(doppler secrets get GH_PAT_WORKFLOW --project wave --config prd --plain)"
-            if [ -z "$token" ]; then
-              echo "::error::Doppler returned an empty GH_PAT_WORKFLOW — refusing the github.token fallback (it would die FATAL on the private-sibling online audit, see header)."
-              exit 1
-            fi
-            echo "::add-mask::$token"
-            export GH_TOKEN="$token"
-            unset token
+            echo "::error::WAVE GitHub App token could not be minted on a trusted trigger (${GITHUB_EVENT_NAME}) — set WAVE_GH_APP_ID and WAVE_GH_APP_PRIVATE_KEY and install the App on wave-foundation and private-repo. No PAT fallback."
+            exit 1
           fi
-          unset DOPPLER_TOKEN
+          unset DOPPLER_TOKEN APP_TOKEN
           if [ "$offline" = "true" ]; then
             zizmor --no-online-audits .github/workflows/
           else

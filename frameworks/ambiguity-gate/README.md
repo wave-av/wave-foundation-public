@@ -40,7 +40,7 @@ recorded here so every consumer inherits it.
 ## The gate — 4 ordered steps (do not skip to ACT)
 
 1. **DETECT & NAME** — write the competing interpretations explicitly. *"A: edit `dispatch-edge`
-   directly. B: `dispatch-edge` is a one-way sync mirror → edit canonical `wave-dispatch`."* If you cannot
+   directly. B: `dispatch-edge` is a one-way sync mirror → edit canonical `private-repo`."* If you cannot
    name **both** sides, you have not understood the ambiguity yet — keep going until you can.
 
 2. **RESEARCH with evidence** — disambiguate from ground truth, not belief. Read the source-of-truth file;

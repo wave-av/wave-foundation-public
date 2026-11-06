@@ -77,6 +77,18 @@ and easy to misread.
 ### B6 — always-true RLS risky-subset review
 Out-of-scope for SECDEF; subset of `USING (true)` policies that need tightening.
 
+### B8 — pin `search_path` on every SECDEF function
+`CREATE OR REPLACE FUNCTION` rewrites a function's config parameters, so a B2/B3 body that
+omitted `SET search_path` left its function resolution-mutable while running as `postgres`
+(`bypassrls`) — CWE-426, Supabase advisor `function_search_path_mutable`:
+
+```sql
+ALTER FUNCTION public.<fname>(<args>) SET search_path TO 'public';
+```
+
+**Risk**: low — only breaks a body that resolved a name outside `public` (verify per batch;
+pgcrypto callers need `'public', 'extensions'`). **Reversible**: yes.
+
 ## Execution recipe
 
 For each tier-1 batch (B2 read-side first, then B3 write-side):
@@ -116,6 +128,9 @@ Before applying ANY tier-1 batch to prod:
 - B4 / #212: drop SECDEF where not needed (deferred — requires per-function dependency map)
 - B5 / #213: multiple_permissive merge (separate from SECDEF)
 - B6 / #214: always-true RLS review (separate from SECDEF)
+- B8: `search_path` pin — batch #1 covers the 75 B2/B3 omissions ([`B8-batch-1.md`](./migrations/B8-batch-1.md))
+- B8: batch #2 — `create_pairing_session` fails closed instead of falling back to a committed
+  encryption key ([`B8-batch-2.md`](./migrations/B8-batch-2.md))
 
 ## Refs
 

@@ -17,7 +17,7 @@
 # (messages.create / beta.messages / /v1/messages) with NO cache_control / cacheControl anywhere,
 # and either (a) sets a `system` field, OR (b) FOLDS a system/sys string into the prompt via
 # concatenation (`sys + "\n\n" + user`) — the latter is a system prefix made uncacheable, which the
-# `system`-field check alone cannot see (the wave-dispatch frontier-hop gap). Escaped lines excepted.
+# `system`-field check alone cannot see (the private-repo frontier-hop gap). Escaped lines excepted.
 #
 # Escape:  line/file containing `cache-exempt` or `claude-api-lint: ignore`/`skip` (prefix varies → don't cache).
 # Usage:   lint-cache-control.sh [file ...]   (pre-commit passes changed files; no args → git-tracked code)
@@ -103,7 +103,7 @@ for f in "${files[@]}"; do
 
   # (b) blind-spot: NO `system` field, but a system/sys string is FOLDED into the prompt
   # (e.g. `prompt = sys + "\n\n" + user`). Semantically a system prefix, but uncacheable because it's
-  # concatenated into the user message — exactly the wave-dispatch frontier gap the (a) check missed.
+  # concatenated into the user message — exactly the private-repo frontier gap the (a) check missed.
   if [ "$emitted" -eq 0 ]; then
     hit="$(grep -nE "$FOLD_RE" "$f" 2>/dev/null | grep -vE 'claude-api-lint: ignore|cache-exempt' | head -1 || true)"
     if [ -n "$hit" ]; then

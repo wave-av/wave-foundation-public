@@ -8,7 +8,7 @@
 // tracked so they can be promoted later once backed by a status page, a measurement, or a shipped
 // feature — they MUST NOT appear in user-facing strings until then.
 //
-// Proven identical in wave-av/wave-www (content/claims.ts) and wave-av/wave-developer
+// Proven identical in wave-av/private-repo (content/claims.ts) and wave-av/private-repo
 // (content/claims.ts), audited 2026-05-31. Harvested into the foundation as the canonical model.
 // See frameworks/copywriting/claims-register.md for the standard and workflow.
 

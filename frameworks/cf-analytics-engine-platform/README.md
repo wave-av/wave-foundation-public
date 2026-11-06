@@ -46,7 +46,7 @@ const result = await queryTenantAnalytics({
 
 ## Security
 
-`queryTenantAnalytics` **forces** `WHERE index1 = '<tenant_id>'` as the first condition. Callers cannot bypass it. The select/where/group/order/limit clauses are validated against a narrow character allowlist to prevent injection. `tenant_id` is single-quote-escaped before interpolation.
+`queryTenantAnalytics` **forces** `WHERE index1 = '<tenant_id>'` as the first condition. Callers cannot bypass it. The select/where/group/order/limit clauses are validated against a narrow character allowlist (with balanced parentheses, so `where_extra` cannot close its wrapper and `OR` past the tenant filter) to prevent injection. `tenant_id` is single-quote-escaped before interpolation.
 
 ## Test plan
 

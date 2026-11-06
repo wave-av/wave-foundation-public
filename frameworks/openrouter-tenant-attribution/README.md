@@ -51,7 +51,7 @@ const client = new TenantOpenRouterClient(
 );
 
 const reply = await client.chat({
-  model: "anthropic/claude-sonnet-4-5",
+  model: "anthropic/claude-sonnet-5.5",
   messages: [{ role: "user", content: "Hello" }],
   transaction_id: "wave:acme:chat:abc123",
 });

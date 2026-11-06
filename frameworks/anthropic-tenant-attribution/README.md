@@ -45,7 +45,7 @@ const client = new TenantAnthropicClient(
 );
 
 const reply = await client.messages({
-  model: "claude-sonnet-4-5",
+  model: "claude-sonnet-5-5",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Summarize this transcript" }],
 });

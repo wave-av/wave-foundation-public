@@ -112,6 +112,33 @@ describe("queryTenantAnalytics", () => {
     ).rejects.toMatchObject({ code: "INVALID_WHERE" });
   });
 
+  it("rejects where_extra that closes its wrapper to OR past the tenant filter", async () => {
+    const fetchImpl = mockOkFetch([]);
+    await expect(
+      queryTenantAnalytics({ ...baseInput, where_extra: "blob2 = blob2) OR (index1 != index1" }, fetchImpl),
+    ).rejects.toMatchObject({ code: "INVALID_WHERE" });
+    await expect(
+      queryTenantAnalytics({ ...baseInput, where_extra: "1=1) OR (1=1" }, fetchImpl),
+    ).rejects.toMatchObject({ code: "INVALID_WHERE" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects unbalanced parentheses in select_clause", async () => {
+    const fetchImpl = mockOkFetch([]);
+    await expect(
+      queryTenantAnalytics({ ...baseInput, select_clause: "count(" }, fetchImpl),
+    ).rejects.toMatchObject({ code: "INVALID_SELECT" });
+  });
+
+  it("accepts balanced nested parentheses in where_extra", async () => {
+    const fetchImpl = mockOkFetch([]);
+    const r = await queryTenantAnalytics(
+      { ...baseInput, where_extra: "(double1 > 1) AND (blob2 = blob3 OR (double2 < 5))" },
+      fetchImpl,
+    );
+    expect(r.meta.query).toContain("index1 = 'acme' AND ((double1 > 1) AND (blob2 = blob3 OR (double2 < 5)))");
+  });
+
   it("A5b: rejects comment markers --", async () => {
     const fetchImpl = mockOkFetch([]);
     await expect(

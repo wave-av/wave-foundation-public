@@ -1,5 +1,5 @@
 // Regression drill for CodeQL js/bad-tag-filter in frameworks/bench/bench.mjs's `visibleText()` /
-// `jsonLd()` tag-stripping. bench.mjs is a fleet-wide vendored SSoT (wave-blog-www's
+// `jsonLd()` tag-stripping. bench.mjs is a fleet-wide vendored SSoT (private-repo's
 // bench-ssot-drift.yml diffs it byte-for-byte against a raw-GitHub fetch), so it MUST remain one
 // self-contained file — these tests live here, separately, and only IMPORT the two functions
 // (bench.mjs exports them + guards its `main()` CLI entrypoint behind an `import.meta.url` check,

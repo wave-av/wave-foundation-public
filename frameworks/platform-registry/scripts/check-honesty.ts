@@ -196,7 +196,7 @@ const FIXTURES: Fixture[] = [
   {
     name: 'lying stub — metered+auth over a bare 200 (the real NDI/OMT/SRT bug)',
     caps: {
-      repo: 'wave-av/wave-ndi-edge',
+      repo: 'wave-av/private-repo',
       exposes: { apis: [{ protocol: 'ndi', endpoint: 'https://ndi.wave.online/feed', auth: 'wave-token-v1', metered: true }] },
     },
     source: STUB,
@@ -205,7 +205,7 @@ const FIXTURES: Fixture[] = [
   {
     name: 'honest scaffold — claims nothing it cannot back (the fix the sweep shipped)',
     caps: {
-      repo: 'wave-av/wave-omt-edge',
+      repo: 'wave-av/private-repo',
       exposes: { apis: [{ protocol: 'ndi', endpoint: 'https://omt.wave.online/feed', auth: 'none', metered: false }] },
     },
     source: STUB,

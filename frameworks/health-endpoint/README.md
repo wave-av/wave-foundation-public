@@ -10,7 +10,7 @@
 Every WAVE worker answers `GET /health` with this exact JSON object:
 
 ```json
-{ "ok": true, "service": "wave-dispatch", "layer": "edge", "version": "1.7.0" }
+{ "ok": true, "service": "private-repo", "layer": "edge", "version": "1.7.0" }
 ```
 
 `content-type: application/json`, HTTP `200`. The shape is stable — uptime monitors
@@ -19,7 +19,7 @@ and the cross-layer discovery registry parse it, so fields are append-only.
 | Field | Meaning |
 |---|---|
 | `ok` | Always `true` while the worker is serving. This is **liveness**, not deep readiness — it must not probe downstream deps (those belong on a separate `/status` route so `/health` stays cheap for high-frequency monitors). |
-| `service` | The worker's repo slug, e.g. `"wave-dispatch"`. Makes a health hit attributable by service without tag-spelunking. |
+| `service` | The worker's repo slug, e.g. `"private-repo"`. Makes a health hit attributable by service without tag-spelunking. |
 | `layer` | The [protocol-plane](../protocol-plane/README.md) layer the worker sits on. Edge workers report `"edge"`; the same helper serves `"bridges"`, `"local"`, etc. |
 | `version` | Build / foundation pin (e.g. a git SHA or the consumed foundation tag). `"unknown"` when not wired to a build var. |
 
@@ -47,7 +47,7 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === "/health") {
       // service = this repo's slug, layer = its protocol-plane layer
-      return waveHealth("wave-dispatch", "edge", env.WAVE_VERSION);
+      return waveHealth("private-repo", "edge", env.WAVE_VERSION);
     }
     // ... rest of the worker
     return new Response("not found", { status: 404 });

@@ -2,7 +2,7 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# Audited 2026-08-31 across all 174 wave-av repos: `wave-ndi-edge` was the ONLY repo with any CI
+# Audited 2026-08-31 across all 174 wave-av repos: `private-repo` was the ONLY repo with any CI
 # assertion about image CONTENT. Every other publish lane was ungated. The shared `wave-sec-gate.yml`
 # runs trufflehog against the GIT TREE — never against a built image or its layers — and is
 # `advisory: true` in every caller. So a secret, a licensed binary, or an artifact of unknown
@@ -15,7 +15,7 @@
 # recorded as a whiteout, so the flattened view looks clean — but the early layer's blob still
 # contains the file, and that blob is EXACTLY what gets pushed to the registry. A gate that scans
 # only the flattened filesystem therefore certifies an image that ships the very thing it forbids.
-# Proven with a negative control in wave-ndi-edge#76: flattened scan `0 hits`; per-layer scan found
+# Proven with a negative control in private-repo#76: flattened scan `0 hits`; per-layer scan found
 # `usr/local/lib/libndi_advanced.so.6` alongside its `.wh.` marker. Assertions 1-3 all PASSED; only
 # the per-layer scan caught it.
 #
@@ -29,7 +29,7 @@
 #   2  COULD-NOT-SCAN — the build failed, no layer tarballs were found, or a positive control was
 #      absent. NEVER suppressed, in ANY mode, advisory included.
 # "Could not run" must never render as "clean". `wave-sec-gate.yml`'s own header records the day the
-# fleet learned that (claude-workstation#1761: a gate ran two of its five scanners and reported
+# fleet learned that (private-repo#1761: a gate ran two of its five scanners and reported
 # success).
 #
 # ADOPTION POSTURE — `advisory` DEFAULTS TO FALSE, i.e. BLOCKING.
@@ -44,7 +44,7 @@
 # USAGE
 #   jobs:
 #     ndi-image:
-#       uses: wave-av/wave-foundation-public/.github/workflows/image-content-gate.yml@main
+#       uses: wave-av/wave-foundation/.github/workflows/image-content-gate.yml@main
 #       with:
 #         context: containers/ndi
 #         forbid: 'libndi|ndi-discovery-server|ndi-record'
@@ -137,12 +137,7 @@ jobs:
           done <<< "${BUILD_ARGS}"
           echo "==> docker build -t ${IMAGE} -f ${df} ${CONTEXT}"
           # A build failure is a COULD-NOT-SCAN, not a finding: we learned nothing about the image.
-          # BASH 3.2 PORTABILITY (#5269): args is legitimately empty when the build-args input is
-          # unset -- "${args[@]}" on a ZERO-element array is an unbound-variable error under
-          # set -u in bash below 4.4 (this step has set -euo pipefail, so -u is on). This reusable
-          # workflow's runner is caller-configurable via the runs-on input (default ubuntu-latest),
-          # and a run: block is host-bash shell text regardless of which host -- guard the expansion.
-          docker build -t "$IMAGE" -f "$df" ${args[@]+"${args[@]}"} "$CONTEXT" || {
+          docker build -t "$IMAGE" -f "$df" "${args[@]}" "$CONTEXT" || {
             echo "::error::COULD-NOT-SCAN: the image failed to build, so nothing was measured."
             exit 2
           }

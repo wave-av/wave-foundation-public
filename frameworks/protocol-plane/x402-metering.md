@@ -73,4 +73,4 @@ Tier promotion is automatic based on the trailing-30-day usage from the meter po
 - [Cross-layer Auth Token Model](auth-token-model.md) — where the JWT comes from
 - [Protocol Plane](README.md) — the four layers
 - [Pricing & Settlement Standard](../pricing/README.md) — the broader pricing framework
-- [Dispatch payment-rails-contract](https://github.com/wave-av/wave-dispatch) — the cross-rail abstraction (Stripe/x402/etc)
+- [Dispatch payment-rails-contract](https://github.com/wave-av/private-repo) — the cross-rail abstraction (Stripe/x402/etc)

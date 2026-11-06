@@ -2,15 +2,8 @@ name: foundation checks
 
 # Reusable cross-project gate (the executable half of wave-foundation). Any WAVE repo runs the same
 # secret-scan + file-size gate by calling this:
-#   jobs: { gate: { uses: wave-av/wave-foundation-public/.github/workflows/checks.yml@main } }
+#   jobs: { gate: { uses: wave-av/wave-foundation/.github/workflows/checks.yml@v1 } }
 # One source of truth -> update here, every repo inherits it (no copying = no drift).
-# NOTE: this file ships in wave-foundation-public, so the `uses:` above must point at the
-# -public org/repo — a caller on -public can never resolve a private-repo `uses:`.
-# NOTE: pinned to @main (mutable) only because this mirror carries no version tags — see
-# ADR-008. This gate's own fail-closed defaults are normally armed only at a v1 tag move
-# (scripts/advance-major-tag.sh); @main here means a push to this repo's main takes effect
-# immediately for every public caller, without that tag-move review. Pin to a SHA/tag once
-# the mirror carries release refs.
 on:
   workflow_call:
     inputs:
@@ -61,6 +54,10 @@ jobs:
           fetch-depth: 0 # diff-scoped token-budget gate below needs merge-base history
           persist-credentials: true # v7 sparse-checkout re-fetches the full tree; the persisted token is required for PRIVATE consumer repos
       - name: Secret scan (fail-closed, allowlist-aware)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           # This block is INLINE on purpose and must stay that way. checks.yml is a `workflow_call`
           # reusable workflow: every checkout below omits `repository:`, so the tree in scope is the
@@ -73,43 +70,198 @@ jobs:
           # finding and the gate passes any tree. That is not hypothetical — a single blank line
           # silently disabled this scanner (#926). `#` comments must go too: under -F they are
           # literals, so a comment becomes a live substring exception.
-          ALLOW=$(mktemp)
-          trap 'rm -f "$ALLOW"' EXIT
-          if [ -f .github/.secret-allowlist ]; then
-            grep -vE '^[[:space:]]*($|#)' .github/.secret-allowlist > "$ALLOW" || true
-            if [ ! -s "$ALLOW" ] && [ -s .github/.secret-allowlist ]; then
-              echo "::error::.github/.secret-allowlist has content but sanitizes to ZERO patterns — every line is blank or a comment, so it grants no exceptions. Refusing to scan: a malformed exception list means NO exceptions, never 'no findings'."
-              exit 1
-            fi
-          fi
-          # An ABSENT allowlist leaves $ALLOW empty, and `grep -vFf` with an empty pattern file
-          # excludes nothing — i.e. no exceptions, which is the fail-closed default we want.
-          # Real-secret patterns. Lines tagged "pragma: allowlist secret" (e.g. test fixtures / regex
-          # definitions) are skipped — that's how a vetting module can define key-shapes without tripping.
-          # The allowlist is excluded from the scan itself: it enumerates credential SHAPES by design.
-          # `grep` exits 1 when it matches NOTHING — which for the final filter means the tree is
-          # CLEAN. GitHub runs this block under `/usr/bin/bash -e`, where that status aborts the
-          # step instantly with NO output: the gate failed precisely when there was nothing wrong,
-          # and said nothing about why. The canonical script does not have this bug because it sets
-          # `-uo pipefail` and DELIBERATELY omits -e — identical text, opposite behaviour, which is
-          # the cost of the duplication this file is required to carry.
+          ALLOWLIST=.github/.secret-allowlist
+          # Every mktemp result is checked, the same as the canonical script, where a failed one
+          # would leave an empty name and a tree nothing scanned would report clean.
           #
-          # So the status is captured and CLASSIFIED rather than ignored. `|| true` would also stop
-          # the abort, and would be wrong: it erases the difference between "found nothing" and
-          # "grep could not run", which is the #944 fail-open in a new place.
-          #   0 = matched   1 = no match (clean)   >1 = grep itself failed
-          set +e
-          HITS=$(grep -rIEn '(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|-----BEGIN [A-Z ]*PRIVATE KEY)' \
-              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
-              --exclude=.secret-allowlist . 2>/dev/null | grep -v 'allowlist secret' \
-              | grep -vFf "$ALLOW")
-          rc=$?
-          set -e
-          if [ "$rc" -gt 1 ]; then
-            echo "::error::secret-scan: the scan pipeline failed (exit $rc) — refusing to report clean. A scanner that cannot run is not a scanner that found nothing."
+          # So is every write to a temp file, because a hit that never reached its file reads the
+          # same as no hit. A grep writes through `| cat`, because a redirect it cannot open and its
+          # own "no match" are both exit 1, and cat's status is only about the write.
+          ALLOW="" ALLOW_SOURCE="" RAW_HITS="" SCAN_ERRORS="" BASE_COPY="" FINDINGS=""
+          trap 'rm -f "$ALLOW" "$ALLOW_SOURCE" "$RAW_HITS" "$SCAN_ERRORS" "$BASE_COPY" "$FINDINGS"' EXIT
+          if ! { ALLOW=$(mktemp) && ALLOW_SOURCE=$(mktemp) && RAW_HITS=$(mktemp) &&
+            SCAN_ERRORS=$(mktemp) && BASE_COPY=$(mktemp) && FINDINGS=$(mktemp); }; then
+            echo "::error::secret-scan: could not create a temp file, refusing to report clean"
             exit 1
           fi
-          if [ -n "$HITS" ]; then echo "::error::secret-like pattern found — do not commit credentials"; echo "$HITS"; exit 1; fi
+          write_failed() {
+            echo "::error::secret-scan: could not write a temp file, refusing to report clean"
+            exit 1
+          }
+          # copy_from_base <spec> <file>: absent at base is an empty file. Asking first keeps
+          # "absent" apart from a write that failed, which git show would report the same way.
+          copy_from_base() {
+            if git cat-file -e "$1" 2>/dev/null; then
+              git show "$1" > "$2" 2>/dev/null || write_failed
+            else
+              : > "$2" || write_failed
+            fi
+          }
+          if [ -s "$ALLOWLIST" ] && ! grep -qvE '^[[:space:]]*($|#)' "$ALLOWLIST"; then
+            echo "::error::.github/.secret-allowlist has content but sanitizes to ZERO patterns — every line is blank or a comment, so it grants no exceptions. Refusing to scan: a malformed exception list means NO exceptions, never 'no findings'."
+            exit 1
+          fi
+          # WHERE EXCEPTIONS COME FROM. On a pull request or merge queue run they are read from the
+          # BASE commit, the same rule the token-budget gate applies to its control files (#958): an
+          # exception takes effect once it is on the base branch, and removing one bites immediately:
+          # an entry holds only if it is on the base AND still in the tree, or a change removing one
+          # would pass here and fail on the base branch after it merged. Absent at base is EMPTY,
+          # never permission, and a run that cannot resolve its base has no exceptions. Any other run
+          # (push) checks a tree nothing further will review, so the tree is the source. An empty
+          # pattern file excludes nothing, which is the fail-closed default.
+          #
+          # THE BASE OF GITHUB'S MERGE COMMIT. A pull request run checks out refs/pull/N/merge, the
+          # CURRENT base branch merged with the PR head, while PR_BASE_SHA can be older than that
+          # merge. A pragma line a peer merged in between is in the tree and not in the older commit,
+          # so a change that never touched that file would fail. The first parent is the base branch
+          # as merged, the same correction the token-budget gate makes (private-repo#1605). The
+          # second parent must EQUAL PR_HEAD_SHA, never just exist: an author merging the base into
+          # their own branch has the parents the other way round, and taking the first there would
+          # make the change its own base.
+          #
+          # THE FORK POINT OF A HEAD CHECKOUT. Buildkite checks out the head itself, with
+          # PR_BASE_SHA at the base branch's tip. A peer's edit there is not in the tree, so a line
+          # the change never touched differs from that tip and would fail. When HEAD equals
+          # PR_HEAD_SHA the base is the merge base of the two, the commit the token-budget gate
+          # diffs against. No merge base, as in a shallow clone, is no base: no exceptions and a
+          # warning. The token-budget gate falls back to the tip there, which would put back this
+          # failure and take exceptions from a commit the head never had.
+          BASE_MODE=0
+          SCAN_BASE=""
+          case "${GITHUB_EVENT_NAME:-}" in
+            pull_request|pull_request_target|merge_group) BASE_MODE=1 ;;
+          esac
+          MERGED_BASE=""
+          if [ -n "${PR_HEAD_SHA:-}" ] && [ "$(git rev-parse -q --verify 'HEAD^2' 2>/dev/null || true)" = "$PR_HEAD_SHA" ]; then
+            MERGED_BASE=$(git rev-parse -q --verify 'HEAD^1' 2>/dev/null || true)
+          fi
+          WANTED_BASE="${MERGED_BASE:-${PR_BASE_SHA:-${MERGE_BASE_SHA:-}}}"
+          if [ -n "$WANTED_BASE" ]; then
+            BASE_MODE=1
+            SCAN_BASE=$(git rev-parse --verify --quiet "$WANTED_BASE^{commit}" 2>/dev/null || true)
+          fi
+          if [ -n "$SCAN_BASE" ] && [ -n "${PR_BASE_SHA:-}" ] &&
+            [ "$(git rev-parse -q --verify HEAD 2>/dev/null || true)" = "${PR_HEAD_SHA:-}" ]; then
+            SCAN_BASE=$(git merge-base HEAD "$SCAN_BASE" 2>/dev/null || true)
+          fi
+          # GitHub runs this block under `/usr/bin/bash -e`, where grep's exit 1 for "no match" would
+          # abort the step with NO output. The canonical script omits -e, so the same text behaves
+          # differently there, which is the cost of the duplication this file is required to carry.
+          # Each status below is captured and CLASSIFIED rather than ignored. `|| true` would also
+          # stop the abort and would erase the difference between "found nothing" and "grep could not
+          # run", the #944 fail-open in a new place.
+          set +e
+          if [ "$BASE_MODE" -eq 0 ]; then
+            if [ -f "$ALLOWLIST" ] && [ -r "$ALLOWLIST" ]; then
+              cat "$ALLOWLIST" > "$ALLOW_SOURCE" 2>/dev/null || write_failed
+            fi
+          elif [ -n "$SCAN_BASE" ]; then
+            # -x compares whole lines, so a blank line in the tree's copy keeps nothing but blank lines.
+            copy_from_base "$SCAN_BASE:$ALLOWLIST" "$BASE_COPY"
+            if [ -f "$ALLOWLIST" ] && [ -r "$ALLOWLIST" ]; then
+              grep -Fxf "$ALLOWLIST" "$BASE_COPY" | cat > "$ALLOW_SOURCE"
+              [ "${PIPESTATUS[1]}" -eq 0 ] || write_failed
+            else
+              : > "$ALLOW_SOURCE" || write_failed
+            fi
+          else
+            echo "::warning::secret-scan: this change has no base commit available, so no exceptions apply"
+          fi
+          grep -vE '^[[:space:]]*($|#)' "$ALLOW_SOURCE" | cat > "$ALLOW"
+          [ "${PIPESTATUS[1]}" -eq 0 ] || write_failed
+          # Real-secret patterns. `whsec_` takes a base64 tail (Svix issues those as well as Stripe's
+          # alphanumeric form). `wk_` is anchored so an identifier that merely ends in those letters
+          # is not a key. `--null` ends the file name with a NUL, so a colon in a path cannot move
+          # where the record is cut. The trailing `cat` keeps grep's stdout from being a file it
+          # might also be asked to scan.
+          #   0 = matched   1 = no match (clean)   >1 = grep could not scan the whole tree
+          # A redirect on grep that cannot open would stop it with a 1, so that file is opened on its
+          # own first.
+          : > "$SCAN_ERRORS" || write_failed
+          grep -rIEn --null '(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|whsec_[A-Za-z0-9+/]{20}|(^|[^A-Za-z0-9_])wk_(live_|test_)?[A-Za-z0-9.-]{20}|-----BEGIN [A-Z ]*PRIVATE KEY)' \
+              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . \
+              2>"$SCAN_ERRORS" | cat > "$RAW_HITS"
+          SCAN_STATUS=("${PIPESTATUS[@]}")
+          [ "${SCAN_STATUS[1]}" -eq 0 ] || write_failed
+          rc=${SCAN_STATUS[0]}
+          if [ "$rc" -gt 1 ]; then
+            echo "::error::secret-scan: the scan failed (exit $rc) — refusing to report clean. A scanner that cannot run is not a scanner that found nothing."
+            head -5 "$SCAN_ERRORS"
+            exit 1
+          fi
+          # unchanged_at_base <path> <text>: is this exact line in the base copy of the file? Always
+          # yes when the tree is the source of exceptions.
+          CACHED_PATH=""
+          unchanged_at_base() {
+            [ "$BASE_MODE" -eq 1 ] || return 0
+            [ -n "$SCAN_BASE" ] || return 1
+            if [ "$1" != "$CACHED_PATH" ]; then
+              CACHED_PATH="$1"
+              copy_from_base "$SCAN_BASE:$1" "$BASE_COPY"
+            fi
+            grep -qFx -- "$2" "$BASE_COPY"
+          }
+          # entry_is_directory <entry>: on the base commit when there is one, so a change cannot turn
+          # a listed file into a directory and exempt what it puts inside. Otherwise in the tree.
+          entry_is_directory() {
+            if [ "$BASE_MODE" -eq 0 ]; then
+              [ -d "$1" ]
+            else
+              [ "$(git cat-file -t "$SCAN_BASE:./$1" 2>/dev/null)" = tree ]
+            fi
+          }
+          # listed_path <path>: the path, without its leading ./, equals an entry, or sits under an
+          # entry that is a directory. Compared as whole strings, because a substring match would let
+          # a new file named src/<entry>-real.ts take the exemption of <entry>. The quoted case
+          # pattern keeps an entry literal. An entry reading as path:line names that line, never a
+          # file of that name, or a change could add the file.
+          listed_path() {
+            local rel="${1#./}" entry dir
+            while IFS= read -r entry; do
+              if [ "$rel" = "$entry" ] && ! [[ "${entry%:}" =~ :[0-9]+$ ]]; then return 0; fi
+              dir="${entry%/}"
+              [ -n "$dir" ] || continue
+              case "$rel" in
+                "$dir"/*) entry_is_directory "$dir" && return 0 ;;
+              esac
+            done < "$ALLOW"
+            return 1
+          }
+          # listed_line <path> <line>: the finding, without its leading ./, equals an entry written
+          # as path:line or path:line:, compared whole so that an entry for line 1 does not cover
+          # line 10.
+          listed_line() {
+            local rel="${1#./}" entry
+            while IFS= read -r entry; do
+              [ "$rel:$2" = "${entry%:}" ] && return 0
+            done < "$ALLOW"
+            return 1
+          }
+          # A listed path is exempt whatever it holds, changed or not: requiring an unchanged line
+          # there would leave no way to ever edit a line in such a file by PR. A listed line names
+          # what was reviewed, so it holds only while that line is unchanged from the base, or a
+          # change could put a new key on it. The other three exceptions depend on the line's own
+          # text or on the exception file, whose comments carry vendor-prefix placeholders, and hold
+          # under the same rule. A finding prints as file:line only, because this output is a CI log.
+          while IFS= read -r -d '' path && IFS= read -r body; do
+            line_no="${body%%:*}"
+            text="${body#*:}"
+            listed_path "$path" && continue
+            by_line=0
+            listed_line "$path" "$line_no" && by_line=1
+            [ "$path" = "./$ALLOWLIST" ] && by_line=1
+            case "$text" in *'allowlist secret'*) by_line=1 ;; esac
+            grep -qFf "$ALLOW" <<<"$text" && by_line=1
+            if [ "$by_line" -eq 1 ] && unchanged_at_base "$path" "$text"; then continue; fi
+            printf '%s:%s\n' "${path//$'\n'/?}" "$line_no" >> "$FINDINGS" || write_failed
+          done < "$RAW_HITS"
+          set -e
+          if [ -s "$FINDINGS" ]; then
+            echo "::error::secret-like pattern found — do not commit credentials"
+            cat "$FINDINGS"
+            [ "$BASE_MODE" -eq 0 ] || echo "note: an exception applies once it is on the base commit of this change"
+            exit 1
+          fi
           echo "secret-scan clean"
       - name: Raw-PAN gate (stripe-tokenization-only law)
         run: |
@@ -118,12 +270,40 @@ jobs:
           #  - card_number=                                                  (legacy raw field)
           #  - a 13-19 digit literal immediately adjacent to stripe context   (a pasted test PAN)
           # Fail-closed like the scanner above: classify the exit, never swallow it.
+          #
+          # EXCLUSIONS ARE PATH-ANCHORED (#1481), and that is the whole point of this shape.
+          # This gate used to pipe the scan through `grep -viE 'test|spec|fixture|mock|example|
+          # allowlist secret'`. The records grep emits are `path:lineno:matched-text`, so that filter
+          # dropped the WHOLE record whenever one of those words appeared ANYWHERE in it — INCLUDING
+          # inside the matched source line. A real raw PAN on a line whose trailing comment said
+          # `// example`, or that mentioned `api.example.com` / `spec_version` / `X-Test-Id`, was
+          # silently discarded and the gate reported clean. The intent was plainly "skip test FILES"
+          # — a PATH decision — implemented as a line-CONTENT decision, and the two diverge exactly
+          # where an attacker (or a careless paste) lives.
+          #
+          # So the exclusion moves INTO the scanning grep, where it is structural rather than a
+          # convention: an excluded file is never opened, and matched TEXT is never consulted for
+          # exclusion at all. Nothing about WHAT is scanned changes beyond that re-anchoring.
+          #
+          # The one genuinely content-based exception is the repo's inline `pragma: allowlist secret`
+          # convention — the same phrase the secret-scan step above filters on (that step spells it
+          # `grep -v 'allowlist secret'`; the phrase holds no regex metacharacters, so `-vF` here is
+          # the same match, stated explicitly). That pragma is deliberately LINE-scoped — it is how a
+          # vetting module declares a key SHAPE in place — so it correctly stays a content filter,
+          # but as a narrow FIXED string rather than one alternative inside a broad, case-insensitive
+          # word soup. It is the only content predicate left in this gate, and it is opt-in: a line
+          # must literally ask to be skipped.
           set +e
           PAN_HITS=$(grep -rIEn 'card(\[number\]|_number|%5Bnumber%5D)|4[0-9]{15}|5[1-5][0-9]{14}' \
               --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.py' --include='*.sh' \
               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=staging \
-              --exclude-dir=docs --exclude-dir=designs . 2>/dev/null \
-              | grep -viE 'test|spec|fixture|mock|example|allowlist secret' | head -40)
+              --exclude-dir=docs --exclude-dir=designs \
+              --exclude-dir=test --exclude-dir=tests --exclude-dir=__tests__ \
+              --exclude-dir=spec --exclude-dir=specs --exclude-dir=__mocks__ --exclude-dir=mocks \
+              --exclude-dir=fixtures --exclude-dir=__fixtures__ --exclude-dir=examples \
+              --exclude='*.test.*' --exclude='*.spec.*' --exclude='*.fixture.*' \
+              --exclude='*.mock.*' --exclude='*.example.*' --exclude='*.example' . 2>/dev/null \
+              | grep -vF 'allowlist secret' | head -40)
           prc=$?
           set -e
           if [ "$prc" -gt 1 ]; then
@@ -142,6 +322,72 @@ jobs:
             exit 1
           fi
           echo "raw-PAN gate clean"
+      - name: wave-sec scan (the internal Aikido — P2/P3 hard, P5 advisory)
+        run: |
+          # INLINE ON PURPOSE. This step used to be `bash .github/scripts/wave-sec-scan.sh`, which
+          # is unrunnable here: checks.yml is a REUSABLE workflow and every checkout in it omits
+          # `repository:`, so the tree in scope is the CALLER's. The script lives only in
+          # wave-foundation, so every consumer got `No such file or directory` and exit 127 — a
+          # security gate that could not run on any repo but the one that owns it.
+          #
+          # The fix is NOT `if [ -f … ]`. A guard there renders a missing scanner as a clean scan,
+          # which is absence-rendered-as-health — the defect class this fleet exists to refuse. The
+          # scan is inlined instead, matching every other gate in this file (the secret-scan and
+          # raw-PAN gates directly above are inline for the same reason), so there is exactly ONE
+          # copy of these patterns and it travels with the workflow to every caller.
+          #
+          #   P1 raw PANs near stripe calls      — the raw-PAN gate above owns it
+          #   P2 hardcoded secret assignments    — hard fail
+          #   P3 secrets in query strings        — hard fail (move them to headers)
+          #   P4 the E3 signing gate             — pending
+          #   P5 non-timing-safe secret compares — advisory
+          #
+          # `set +e` FIRST, and it is load-bearing. GitHub runs a `run:` block as `bash -e {0}`,
+          # whereas the canonical script was invoked as `bash script.sh` — a fresh shell with no
+          # `-e`. Under the inherited `-e`, the first `grep` that finds nothing exits 1 and kills the
+          # step instantly with NO output: the gate fails precisely when there is nothing wrong, and
+          # the log looks like a crash rather than a verdict. The sibling secret-scan and raw-PAN
+          # gates above take the same precaution for the same reason.
+          set +e
+          set -uo pipefail
+          FAIL=0
+          # PATH-ANCHORED EXCLUSIONS (#1481). Each of the three scans below used to end in
+          # `| grep -viE 'test|spec|fixture|mock|example'`. grep emits `path:lineno:matched-text`, so
+          # that dropped the ENTIRE record when one of those words appeared anywhere in it — a
+          # hardcoded secret on a line carrying `// example`, or referencing `api.example.com` or
+          # `X-Test-Id`, was filtered out and this gate reported clean. "Skip test FILES" is a PATH
+          # decision; it was implemented as a line-CONTENT decision. Declared ONCE here as a shared
+          # array so the three scans cannot drift, and applied inside the scanning grep, where an
+          # excluded file is never opened and matched text is never consulted for exclusion.
+          SEC_EXCL=(
+            --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist
+            --exclude-dir=staging --exclude-dir=docs
+            --exclude-dir=test --exclude-dir=tests --exclude-dir=__tests__
+            --exclude-dir=spec --exclude-dir=specs --exclude-dir=__mocks__ --exclude-dir=mocks
+            --exclude-dir=fixtures --exclude-dir=__fixtures__ --exclude-dir=examples
+            --exclude='*.test.*' --exclude='*.spec.*' --exclude='*.fixture.*'
+            --exclude='*.mock.*' --exclude='*.example.*' --exclude='*.example'
+          )
+          HARD=$(grep -rIEn "(sk_(live|test)_[A-Za-z0-9]{16,}[[:space:]]*=[[:space:]]*['\"]|password[[:space:]]*=[[:space:]]*['\"][^'\"]{8,}|api_secret[[:space:]]*=[[:space:]]*['\"][A-Za-z0-9]{16,})" \
+            --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.py' \
+            "${SEC_EXCL[@]}" \
+            . 2>/dev/null | head -20)
+          if [ -n "$HARD" ]; then echo "::error::wave-sec P2: hardcoded secret assignments:"; echo "$HARD"; FAIL=1; fi
+          QS=$(grep -rIEn "https?://[^'\"]*(token|api_key|apikey|secret|password)=[A-Za-z0-9]{8,}" \
+            --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.py' \
+            "${SEC_EXCL[@]}" \
+            . 2>/dev/null | head -20)
+          if [ -n "$QS" ]; then echo "::error::wave-sec P3: secrets in query strings (move to headers):"; echo "$QS"; FAIL=1; fi
+          # P5's `=== null` / `=== undefined` are NOT path words — they are deliberate MATCHED-TEXT
+          # predicates (a null-check is not a secret compare), so they legitimately stay content-based.
+          # Only the path words (test/spec/fixture/mock) moved into the scanning grep above.
+          EQ=$(grep -rIEn "(token|secret|apikey|api_key|signature)[[:space:]]*===?[[:space:]]*[a-zA-Z_]" \
+            --include='*.ts' --include='*.js' --include='*.mjs' \
+            "${SEC_EXCL[@]}" \
+            . 2>/dev/null | grep -viE '=== null|=== undefined' | head -20)
+          if [ -n "$EQ" ]; then echo "::warning::wave-sec P5 (advisory): possible non-timing-safe secret compares (use a constant-time compare):"; echo "$EQ"; fi
+          if [ "$FAIL" -eq 1 ]; then echo "::error::wave-sec-scan FAILED — fix the patterns above (the tokenization-plane laws)."; exit 1; fi
+          echo "wave-sec-scan clean (P1 = the raw-PAN gate; P4 = the E3 signing gate, pending)"
       - name: File-size gate
         env:
           MAX: ${{ inputs.max_lines }}
@@ -153,7 +399,7 @@ jobs:
           #
           # VENDORED BY DECLARATION (#1160). The `staging/*` rule above encodes ONE spelling of
           # "harvested", and it is wave-foundation's own. A consumer whose harvested corpus is
-          # organised by vendor (wave-research: betterstack/ devin/ kernel/ codecov/) is punished
+          # organised by vendor (private-repo: betterstack/ devin/ kernel/ codecov/) is punished
           # for a BETTER layout — its 3,402-line `codecov/api/openapi.yaml` is a crawled upstream
           # artifact that DECOMPOSE cannot address, because we do not author it. So the path rule
           # stays a path rule and becomes declarable: a repo marks its harvested trees
@@ -305,11 +551,11 @@ jobs:
           BASELINE=".github/.token-budget-baseline"
           ALLOWLIST=".github/.filesize-allowlist"
           BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
-          # GITHUB'S SYNTHETIC PR MERGE COMMIT (claude-workstation#1605). actions/checkout resolves
+          # GITHUB'S SYNTHETIC PR MERGE COMMIT (private-repo#1605). actions/checkout resolves
           # `refs/pull/N/merge` on pull_request events — a merge of the CURRENT base branch into the
           # PR head — while PR_BASE_SHA is frozen at the base-branch tip from when the event fired.
           # Diffing that stale base against the merge commit reports every PEER commit merged in
-          # between as ADDED work belonging to THIS pull request. Measured on claude-workstation
+          # between as ADDED work belonging to THIS pull request. Measured on private-repo
           # #1591: the voice gate failed the PR over a `human` line in a plan doc it never touched,
           # already on main from someone else's merged work, and named that author's file in the
           # annotation. It fires precisely when a branch falls behind its base, which on a busy repo
@@ -425,7 +671,7 @@ jobs:
               # allowlisted file that had grown past $BYTE_MAX left NO trace anywhere: the summary
               # printed `0 over-cap file(s) in the changed set`, byte-identical to a genuinely clean
               # diff. Proven live — .github/workflows/auto-merge.yml went 64097 -> 67075 bytes in
-              # claude-workstation#2393 and this gate reported 0. The EXEMPTION IS UNCHANGED (still an
+              # private-repo#2393 and this gate reported 0. The EXEMPTION IS UNCHANGED (still an
               # unconditional `continue`, still no effect on $fail); only its silence is fixed.
               b=$(wc -c <"$f")
               if [ "$b" -gt "$BYTE_MAX" ]; then
@@ -486,6 +732,118 @@ jobs:
           done < <(grep -vE '\.(types|d)\.ts$' "$list" || true)
           if [ "$fail" = 0 ]; then echo "token-budget ratchet passed (diff-scoped: $count over-cap file(s) in the changed set, 0 new/grown, $exempt over-cap file(s) exempted by $ALLOWLIST)"; fi
           exit "$fail"
+
+      - name: NUL-byte gate (diff-scoped) #1484
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # Closes #1484 (measured on a sibling repo's issue): a single NUL byte anywhere in the first
+          # 8000 bytes of a file makes git classify the WHOLE file as binary, so the diff renders as
+          # `Bin 0 -> N bytes` — unreadable to a human reviewer AND to any bot review the PR is gated
+          # on. Every other gate in the fleet is blind to this: tsc/vitest/wrangler dry-run/CodeQL/
+          # semgrep all stay green, because a NUL sits outside a parser's whitelist exactly as a
+          # space does, so the case under test is unaffected. Tests green, oversight silently off.
+          #
+          # WHY NOT `grep`: `LC_ALL=C grep -n '[^ -~]' <file>` prints NOTHING on a file git has
+          # already classified binary — grep refuses to show you the thing you are looking for
+          # PRECISELY BECAUSE it is present. `grep -c $'\x00'` is equally useless: a NUL cannot
+          # survive inside an argv string, so the pattern is empty before grep ever runs. Only byte-
+          # level tools answer this: `file <path>` (reports `data`), `tr -dc '\0' | wc -c` (counts),
+          # `od -c` (locates). This gate is built from those, not grep.
+          #
+          # NOT A NON-ASCII BAN. The obvious wrong implementation rejects any byte outside 7-bit
+          # ASCII, which would fail this fleet's prose everywhere it uses an em dash, a curly quote,
+          # or an emoji. git's own binary heuristic keys on a NUL in the first 8000 bytes, not on
+          # non-ASCII content, so this gate keys on exactly that: a literal NUL byte, nothing wider.
+          #
+          # DIFF-SCOPED, SAME BASE DERIVATION as the token-budget gate immediately above (PR base sha
+          # / merge-queue base sha / push before-sha, narrowed to the merge-base with HEAD, empty-tree
+          # fallback for an indeterminate base, and the same `refs/pull/N/merge` synthetic-merge-commit
+          # correction) — see that step's comments for the full rationale; not re-derived here to
+          # avoid a fourth copy of it in this file (the token-budget gate is the canonical one).
+          BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
+          head2="$(git rev-parse -q --verify 'HEAD^2' 2>/dev/null || true)"
+          if [ -n "$PR_HEAD_SHA" ] && [ -n "$head2" ] && [ "$head2" = "$PR_HEAD_SHA" ]; then
+            BASE_REF="$(git rev-parse 'HEAD^1')"
+          fi
+          EMPTY_TREE=$(git hash-object -t tree /dev/null)
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$EMPTY_TREE"
+            echo "::warning::NUL-byte gate: indeterminate diff base; scanning full tree (empty-tree base) so no commit is skipped"
+          else
+            mb="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"
+            BASE="${mb:-$BASE_REF}"
+          fi
+          echo "NUL-byte gate: diffing against $BASE (HEAD $(git rev-parse HEAD))"
+          fail=0
+          count=0
+          # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate above for the class:
+          # `done < <(cmd)` cannot propagate cmd's exit status, so a failed lister must be caught here,
+          # never left to fall through as a silent, vacuous pass over zero files.
+          # SCAN SET — the same 20 source extensions as the file-size/token-budget gates above.
+          list=$(mktemp)
+          vend=$(mktemp)
+          attrs=$(mktemp)
+          trap 'rm -f "$list" "$vend" "$attrs"' EXIT
+          if ! git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- \
+            '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.py' '*.go' '*.rb' \
+            '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cc' '*.sh' '*.bash' '*.svelte' \
+            '*.yml' '*.yaml' \
+            >"$list"; then
+            echo "::error::NUL-byte gate: git diff against '$BASE' FAILED — refusing to report a pass. The gate scanned NOTHING; check that the base ref was fetched (fetch-depth: 0)."
+            exit 1
+          fi
+          # linguist-vendored, resolved in ONE invocation — identical treatment to the gates above.
+          if tr '\n' '\0' <"$list" | git check-attr -z --stdin linguist-vendored >"$attrs" 2>/dev/null; then
+            while IFS= read -r -d '' p && IFS= read -r -d '' _a && IFS= read -r -d '' v; do
+              [ "$v" = "set" ] && printf '%s\n' "$p"
+            done <"$attrs" >"$vend"
+          else
+            echo "::warning::NUL-byte gate: git check-attr failed — honouring NO linguist-vendored exemptions (fail-closed)."
+            : >"$vend"
+          fi
+          nvend=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue # skip deletions — nothing to scan
+            case "$f" in
+              staging/* | dist/* | */dist/* | build/* | */build/* | *.min.js | \
+              vendor/* | */vendor/* | external/* | */external/* | \
+              third_party/* | */third_party/* | ThirdParty/* | */ThirdParty/* | \
+              node_modules/* | */node_modules/* | \
+              pnpm-lock.yaml | */pnpm-lock.yaml | pnpm-lock.yml | */pnpm-lock.yml) \
+                continue ;; # vendored / generated — exempt by PATH (lockfiles: generated artifacts a
+                            # diff cannot decompose — same exemption as the size gates above)
+            esac
+            if grep -qxF -- "$f" "$vend"; then # declared vendored by the repo's own .gitattributes
+              nul=$(tr -dc '\0' <"$f" | wc -c | tr -d ' ')
+              if [ "$nul" -gt 0 ]; then
+                echo "NUL-byte gate: exempt (linguist-vendored) $f — $nul NUL byte(s)"
+              fi
+              nvend=$((nvend + 1))
+              continue # named, never silent
+            fi
+            IFS= read -r first <"$f" || true # line 1 only
+            case "$first" in
+              *AUTO-GENERATED* | *auto-generated* | *Auto-Generated* | *Auto-generated*) continue ;;
+            esac # generated embedded-asset source — same exemption as the size gates above
+            count=$((count + 1))
+            nul=$(tr -dc '\0' <"$f" | wc -c | tr -d ' ')
+            [ "$nul" -gt 0 ] || continue
+            # LOCATE the first NUL's byte offset: one byte per output line (`-w1`), so the NUL line's
+            # 1-based position converted to a 0-based byte offset IS the offset. `-An` drops the
+            # address column (which `od -A` would otherwise report itself, redundantly).
+            offset=$(od -An -v -tx1 -w1 -- "$f" | grep -n -m1 '00' | cut -d: -f1)
+            offset=$((offset - 1))
+            echo "::error::$f contains a NUL byte at offset $offset — git will render this file as binary and the diff cannot be reviewed. Replace it (od -c '$f' | grep '\\\\0' locates it)."
+            fail=1
+          done < <(cat "$list")
+          if [ "$fail" = 0 ]; then echo "NUL-byte gate passed ($count file(s) scanned, $nvend exempt by path/linguist-vendored)"; fi
+          exit "$fail"
+
       - name: Prose-energy-budget gate (ratchet, diff-scoped)
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -497,7 +855,7 @@ jobs:
           # (a DIFFERENT law from the file-size one above — declared via the marker above so the
           # gate-scope drill groups it separately; an undeclared divergent scan set stays a failure).
           # The governance-energy-budget law (born de-board-org-psy lane 2026-08-31, canon
-          # claude-workstation governance/research/thinker-canon/de-board-organizational-psychoanalysis.md,
+          # private-repo governance/research/thinker-canon/de-board-organizational-psychoanalysis.md,
           # De Board ch.10): governance prose spends the psychic energy budget it exists to free —
           # judge organizational design by how much energy it leaves for the task. This gate governs
           # the STANDING READ: every session pays for AGENTS.md and SKILL.md bytes. Diff-scoped like
@@ -673,7 +1031,7 @@ jobs:
           #
           # WHY THIS MATTERS beyond convenience: hooks and CLI tooling authored on macOS are today
           # certified only on ubuntu, which produces MISDIRECTED signals — green in CI, red on the
-          # machine that actually runs them (claude-workstation#1542/#1547). A macOS leg is the only
+          # machine that actually runs them (private-repo#1542/#1547). A macOS leg is the only
           # thing that catches the behavioural half of that class, and Xcode/iOS CI will need this
           # same entry.
           #
@@ -737,7 +1095,7 @@ jobs:
               # as shadow — see the provenance-ledger check below, which fails closed if this is ever
               # flipped to "enforce" without a matching frameworks/gates/rule-promotions.jsonl grant).
               "rule7": "shadow",
-              # rule8 — push+pull_request double-run detector (SHADOW; cost-grounded, wave-rig#174
+              # rule8 — push+pull_request double-run detector (SHADOW; cost-grounded, private-repo#174
               # durable fix). New rule, enters shadow per pipeline rule; see check_fn:rule8 below for
               # the full predicate + why enforce/canary is deferred.
               "rule8": "shadow",
@@ -832,7 +1190,7 @@ jobs:
               if enforce_here:
                   enforce_violations += 1
                   # rule=<id> tag (WAS joint #3 Layer 3-3, adaptive-immunity tripwire) mirrors the
-                  # shadow branch's tagging below so census-side telemetry (wave-rig
+                  # shadow branch's tagging below so census-side telemetry (private-repo
                   # was-shadow-telemetry.mjs) can tally fleet-wide ENFORCE firings per rule the same
                   # way it already tallies shadow firings — the input the post-promote tripwire
                   # needs to compute each enforce rule's fleet failure-rate. Purely additive to the
@@ -841,7 +1199,7 @@ jobs:
               else:
                   shadow_violations += 1
                   # Developer-facing signal ONLY. Fleet-wide shadow measurement is census-side
-                  # (wave-rig #175 runs this lint over every repo), NOT scraped from CI runs — a
+                  # (private-repo #175 runs this lint over every repo), NOT scraped from CI runs — a
                   # dormant repo never runs CI, so CI-scraping would be sampling-biased. [F1]
                   print(f"::notice::WAS-SHADOW rule={rule_id} :: {msg}")
 
@@ -970,7 +1328,7 @@ jobs:
 
               # check_fn:rule8 begin
               # Rule 8 (SHADOW, agent-authored — cost-grounded fleet-wide push+PR double-run,
-              # wave-rig#174 durable fix). A workflow with BOTH a pull_request(_target) trigger AND
+              # private-repo#174 durable fix). A workflow with BOTH a pull_request(_target) trigger AND
               # a push trigger runs TWICE for the same commit unless the push is scoped to ONLY the
               # repo's merge-target branch(es) (a legit post-merge gate, e.g. a post-merge deploy).
               # Merge targets = the repo default branch (git-derived, _default_branch() above) PLUS
@@ -993,12 +1351,12 @@ jobs:
               # actual RUN-EVENT data (which trigger fired, whether the job body executed) before a
               # promotion to enforce/canary-enforce can be justified — that join is a documented
               # follow-up, not yet built. Until then this only MEASURES fleet firing-rate (mirrors
-              # rule7's census-side model — wave-rig #175 runs this lint over every repo).
+              # rule7's census-side model — private-repo #175 runs this lint over every repo).
               if has_pr and has_push and not _push_scoped_to_merge_targets_only(push):
                   w("rule8", f"{_safe(path)}: has both pull_request(_target): and push: triggers "
                     f"and push isn't scoped to ONLY merge-target branch(es) "
                     f"{_safe(sorted(MERGE_TARGETS))} — a single commit can fire this workflow "
-                    f"TWICE (fleet-wide push+PR double-run cost — wave-rig#174)")
+                    f"TWICE (fleet-wide push+PR double-run cost — private-repo#174)")
               # check_fn:rule8 end
 
               # check_fn:rule9 begin
@@ -1254,7 +1612,7 @@ jobs:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15"
+          python-version: "3.14"
       - run: pip install pyyaml
       - name: Skill frontmatter gate
         run: |
@@ -1459,11 +1817,11 @@ jobs:
           # Prefer the event's own base SHA (no network, always correct for the PR being gated) and
           # fall back to the remote query only if it is absent.
           BASE_REF="${PR_BASE_SHA:-${MERGE_BASE_SHA:-$PUSH_BEFORE_SHA}}"
-          # GITHUB'S SYNTHETIC PR MERGE COMMIT (claude-workstation#1605). actions/checkout resolves
+          # GITHUB'S SYNTHETIC PR MERGE COMMIT (private-repo#1605). actions/checkout resolves
           # `refs/pull/N/merge` on pull_request events — a merge of the CURRENT base branch into the
           # PR head — while PR_BASE_SHA is frozen at the base-branch tip from when the event fired.
           # Diffing that stale base against the merge commit reports every PEER commit merged in
-          # between as ADDED work belonging to THIS pull request. Measured on claude-workstation
+          # between as ADDED work belonging to THIS pull request. Measured on private-repo
           # #1591: the voice gate failed the PR over a `human` line in a plan doc it never touched,
           # already on main from someone else's merged work, and named that author's file in the
           # annotation. It fires precisely when a branch falls behind its base, which on a busy repo
@@ -1501,11 +1859,11 @@ jobs:
             *frameworks/copywriting/*|*voice-and-tone*) return 1 ;;
             *CHANGELOG.md) return 1 ;;   # git-cliff-generated from commit history — not authored copy
             *code-index/CATALOG.md) return 1 ;;   # code-index.mjs-generated code catalog — quotes identifiers (e.g. learning-admit's `human:` producer), not authored copy
-            # claude-workstation#2109. Internal engineering plans are not marketing copy, and this
+            # private-repo#2109. Internal engineering plans are not marketing copy, and this
             # rule is scoped to marketing copy by its own header. `governance/plans/**` holds
             # north-star epics and phase documents whose whole job is discussing agents, reviewers
             # and operators — so "human" there is the PRECISE word, contrasted with crawler/bot, not
-            # a lapse in voice. Measured on claude-workstation #1922 and #1935: both failed on an
+            # a lapse in voice. Measured on private-repo #1922 and #1935: both failed on an
             # added `_Status:` marker line reading "crawler vs human vs allow-listed bot". This is
             # not a vocabulary gap to patch by extending the ignore list below — that list already
             # carves out human-in-the-loop / human review / human oversight, i.e. the intent to
@@ -1516,7 +1874,7 @@ jobs:
             # repo-relative, so anchoring means only a REAL top-level governance tree matches. A
             # leading wildcard would also exempt `marketing/site/governance/plans/`, letting a
             # customer-facing page opt out of a copy rule by its directory name.
-            # SAME RULING, TWO MORE INTERNAL TREES (claude-workstation#2847): research prose and the
+            # SAME RULING, TWO MORE INTERNAL TREES (private-repo#2847): research prose and the
             # READMEs of internal governance tooling. Measured there — 5 files, ~11 added lines — and
             # one is a VERBATIM QUOTATION (`Schulman: "human data... hard for a model to fit"`) whose
             # only in-repo remedy is to falsify it, the outcome the fenced-block carve-out below
@@ -1525,14 +1883,25 @@ jobs:
             # is README-SPECIFIC, matching the ruling above and the measured file set exactly — a
             # bare `governance/tools/*` would exempt every .ts/.md under the tree, wider than the
             # evidence (CodeRabbit finding on the PR that added this line).
-            governance/plans/*|governance/research/*|governance/tools/*/README.md) return 1 ;;
+            # SAME RULING, TWO MORE INTERNAL TREES (private-repo#4613): governance/docs/** and
+            # rules/**. Both are internal engineering prose, not marketing copy — `governance/docs/*`
+            # holds architecture/operational writeups in the same voice as the plans/research trees
+            # above, and `rules/*` is a lawbook whose entire subject matter is what agents versus
+            # humans may do, so "human" there is again the PRECISE contrasting word, not a lapse in
+            # brand voice. Exposure measured in the consumer repo private-repo: 381 markdown
+            # files under these two trees on origin/main. ANCHORED, not `*governance/docs/*` or
+            # `*rules/*`, for the same reason as the plans/research/tools entry above: paths from
+            # `git diff --name-status` are repo-relative, so anchoring means only a REAL top-level
+            # tree matches — a leading wildcard would also exempt `marketing/site/governance/docs/`
+            # or `marketing/site/rules/`, letting a customer-facing page opt out by directory name.
+            governance/plans/*|governance/research/*|governance/tools/*/README.md|governance/docs/*|rules/*) return 1 ;;
             *.tsx|*.ts|*.md|*.mdx) return 0 ;;
             *) return 1 ;;
           esac; }
           # Generated files are NOT authored copy: skip anything that self-declares as generated in
           # its first 5 lines (same invariant as the token-budget gate's AUTO-GENERATED exemption
           # above). Catalogs/indexes quote identifiers + third-party plugin descriptions verbatim
-          # (first hits: code-index + capability CATALOG.md, claude-workstation#366) — the marker,
+          # (first hits: code-index + capability CATALOG.md, private-repo#366) — the marker,
           # not the path, is the durable signal. Authored marketing never carries "Do not hand-edit".
           is_generated() { head -5 "$1" 2>/dev/null | grep -qiE 'AUTO-GENERATED|@generated|Generated by|Do not hand-edit'; }
           # ENUMERATE FIRST, CHECK THE STATUS, THEN LOOP — see the file-size gate for the class.
@@ -1567,7 +1936,7 @@ jobs:
             fsafe=${f//'%'/%25}; fsafe=${fsafe//$'\r'/%0D}; fsafe=${fsafe//$'\n'/%0A}
             fsafe=${fsafe//:/%3A}; fsafe=${fsafe//,/%2C}
             # ADDED LINES ONLY. Grepping the whole file attributed pre-existing prose to whoever next
-            # touched it: on claude-workstation#1531 four files failed and THREE had zero occurrences
+            # touched it: on private-repo#1531 four files failed and THREE had zero occurrences
             # on any added line (#1351). The two steps below are deliberately separate because their
             # failure modes are opposite and must not be conflated:
             #   1. `git diff` failing is a BROKEN GATE -> error + non-zero, never a silent pass.
@@ -1600,7 +1969,7 @@ jobs:
             # command substitution — single quotes are exactly right and must not become double quotes.
             case "$f" in *.md|*.mdx) span='s/`[^`]*`/ /g' ;; *) span='' ;; esac
             # FENCED BLOCKS are exempt in markdown, for the same reason code spans are
-            # (claude-workstation#2744): their contents are QUOTED SOURCE, not authored copy.
+            # (private-repo#2744): their contents are QUOTED SOURCE, not authored copy.
             # Measured on the pre-fix gate, all flagged: `human: true` (yaml key),
             # `SELECT human FROM actors;`, `type Actor = human | agent;`, `actor=human tier=1`.
             # A docs PR quoting any of those got a BLOCKING red check whose only in-repo remedy
@@ -1689,18 +2058,29 @@ jobs:
     # Billing & Settlement contract gate (frameworks/billing). Validates every billing.config.yaml against
     # billing-config.schema.json + the pinned invariants — above all the CENTS INVARIANT (passthrough must be
     # "100"), the 100x-under-bill class. Schema-driven (validate-billing.py reads the consts FROM the schema),
-    # so it can't disagree with the contract. No-op for repos without a billing.config.yaml. Advisory on
-    # rollout (continue-on-error) so a new gate can't break every spoke at once; harden to blocking after soak.
+    # so it can't disagree with the contract. No-op for repos without a billing.config.yaml.
     # The commit-time twin (registry gate) is the documented follow-up in frameworks/gates/registry.yaml.
+    #
+    # BLOCKING as of 2026-09-07. The rollout `continue-on-error` this replaces was added with the gate
+    # on 2026-05-31 (3f0cede1b) and carried the note "harden to blocking after soak" — the soak ran
+    # 14 weeks and was never closed out, so the CENTS INVARIANT (passthrough must be "100", the
+    # 100x-under-bill class) has been unenforceable on every consumer of this gate that whole time.
+    #
+    # The rollout fear was "a new gate can't break every spoke at once". That is now MEASURED, not
+    # assumed: across the default branches of all 165 wave-av repos, only wave-foundation and
+    # wave-foundation-public carry `frameworks/billing/validate-billing.py` or a `billing.config.yaml`.
+    # Every other caller takes the `else` branch below (::notice, exit 0), so hardening cannot redden
+    # them. Receipt on this branch: `python3 frameworks/billing/validate-billing.py` ->
+    # "✓ frameworks/billing/billing.config.yaml / ✓ scaffolder/templates/billing.config.yaml /
+    # billing-contract: 2 config(s) valid", exit 0.
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with: { python-version: "3.15" }
+        with: { python-version: "3.14" }
       - name: Billing & Settlement contract gate
         run: |
           python3 -m pip install --quiet pyyaml
@@ -1727,7 +2107,7 @@ jobs:
         with:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with: { python-version: "3.15" }
+        with: { python-version: "3.14" }
       - name: Canonical meter-registry gate
         run: |
           python3 -m pip install --quiet pyyaml
@@ -1742,28 +2122,85 @@ jobs:
   # vulnerabilities or disallowed licenses, by diffing the dependency graph (base ↔ head). Inherited
   # org-wide via this reusable gate (@v1) — every consumer gets SCA on its PRs with no per-repo wiring.
   #
-  # Deliberately ADVISORY (not a merge-blocker) for now: it only runs on pull_request (the action needs
-  # PR base/head to diff). Both job- AND step-level `continue-on-error: true` are required to keep the
-  # gate from blocking spokes that lack GitHub Advanced Security ("Dependency review is not supported
-  # on this repository"). Job-level alone only stops the workflow from failing — the check-run API
-  # still reports the step conclusion as FAILURE. Step-level changes the step's conclusion to SUCCESS,
-  # which is what required-status-check protection actually reads. Promote per-repo by turning the
-  # check into a required check only on spokes whose graph is on and signal is clean.
+  # It only runs on pull_request (the action needs PR base/head to diff).
+  #
+  # WHY THIS IS NOT JUST `continue-on-error` ANY MORE (2026-09-07). The blanket job- AND step-level
+  # `continue-on-error: true` this replaces was added for a REAL reason: spokes without GitHub
+  # Advanced Security get "Dependency review is not supported on this repository", and that
+  # infrastructure condition must not redden 105 consumer repos. But the flags did not distinguish
+  # that condition from a genuine finding — they laundered BOTH into a green check, so on every spoke
+  # where the graph IS on, a newly-introduced HIGH-severity CVE or a disallowed license also reported
+  # success. A gate that cannot go red is not a gate.
+  #
+  # ABSENCE HAS THREE STATES: measured-present, measured-absent, and could-not-measure. The probe
+  # below separates them instead of collapsing the third into a pass:
+  #   available=true  -> the graph answered; dependency-review runs WITHOUT continue-on-error, so a
+  #                      real finding FAILS the check. This is the state that was silently broken.
+  #   available=false -> the API said, specifically, that SCA is unsupported here (no GHAS / graph
+  #                      off). That is a MEASURED capability absence, reported as a ::warning and
+  #                      passed — it is not a vulnerability signal and must not masquerade as one.
+  #   available=error -> we could not determine which of the two it is. That is NOT a pass: it is
+  #                      annotated ::error and fails, because "we did not manage to look" must never
+  #                      render as "we looked and it was clean". Retried first so a transient blip
+  #                      does not redden the fleet.
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: true # private consumer repos need the persisted token for the v7 sparse-checkout re-fetch
+
+      - name: Probe dependency-graph availability (three-state)
+        id: sca_probe
+        env:
+          # Routed through env, never interpolated into the script body (workflow-command injection).
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          state=error
+          for attempt in 1 2 3; do
+            err=$(mktemp)
+            if gh api "repos/${REPO}/dependency-graph/compare/${BASE_SHA}...${HEAD_SHA}" \
+                 --silent 2>"$err"; then
+              state=true; break
+            fi
+            # Only these specific messages mean "this repo genuinely cannot do SCA". Anything else
+            # (rate limit, 5xx, network) stays `error` — an outage is not a clean bill of health.
+            if grep -qiE 'not supported on this repository|Advanced Security|Dependency graph is disabled|dependency graph is not enabled' "$err"; then
+              state=false; break
+            fi
+            echo "::notice::dependency-graph probe attempt ${attempt} inconclusive: $(head -c 300 "$err" | tr '\n' ' ')"
+            sleep $(( attempt * 5 ))
+          done
+          echo "available=${state}" >> "$GITHUB_OUTPUT"
+          echo "dependency-graph probe -> ${state}" >> "$GITHUB_STEP_SUMMARY"
+
+      # measured-present: enforce for real. No continue-on-error — a HIGH-severity vuln or a
+      # disallowed license introduced by this PR now fails the check, which is the whole point.
       - name: Dependency review (vulns + licenses)
-        continue-on-error: true
+        if: steps.sca_probe.outputs.available == 'true'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
+
+      # measured-absent: say so out loud rather than showing an unearned green.
+      - name: SCA unavailable on this repository (measured-absent)
+        if: steps.sca_probe.outputs.available == 'false'
+        run: |
+          echo "::warning::SCA skipped — the dependency graph is not available on this repository (no GitHub Advanced Security). This check is GREEN because nothing was measurable here, NOT because the dependencies were reviewed. Enable the dependency graph to make this gate load-bearing."
+
+      # could-not-measure: fail. This is the state the old blanket continue-on-error hid.
+      - name: SCA could not be measured
+        if: steps.sca_probe.outputs.available == 'error'
+        run: |
+          echo "::error::SCA could not be determined after 3 attempts — the dependency-graph API neither answered nor said it was unsupported. Refusing to report a green dependency-review on an unmeasured PR; re-run once the API recovers."
+          exit 1
 
   # PR body floor — the WAVE PR-description bar, enforced as a shared gate so EVERY repo and every
   # peer (agent or vendor bot) hits it. Not a style preference: measured against 50 real merged PRs
@@ -1794,7 +2231,7 @@ jobs:
   # "Re-run". Deliberately do NOT tell callers to add `edited` to their pull_request `types:`:
   # `edited` fires at an UNCHANGED head SHA — with cancel-in-progress:true that is the rule9/#1020
   # cancelled-check-run-debris class — and review bots edit PR bodies repeatedly, so the ENTIRE
-  # gate would re-run several times per PR (the rule8/wave-rig#174 double-run cost class).
+  # gate would re-run several times per PR (the rule8/private-repo#174 double-run cost class).
   #
   # Also guards pull_request_target: a consumer whose gate runs on that event (fork PRs needing
   # secrets) would otherwise get a silently-SKIPPED pr-body job while enforce_pr_body reads true

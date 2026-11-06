@@ -34,7 +34,7 @@ WCAG vs `--bg #0b0f14`. All values verified by `staging/golden-paths-scaffolds/n
 |---|--------|----:|:-----------------:|:-----:|:----------------:|:-----:|------------------|
 | 1 | AI / routing / inference | 171 | `#16d6aa` | 10.2:1 | `#14b28d` | 7.1:1 | **dispatch**, cortex, studio-ai, voice |
 | 2 | streaming / transport | 195 | `#00d4d5` | 10.4:1 | `#00b0b1` | 7.2:1 | pipeline, moq, srt, broadcast |
-| 3 | developer / API / SDK | 220 | `#21BCE7` | 10.1:1 | `#00aacf` | 7.0:1 | sdk-api, api, cli, adk, mcp, workflow |
+| 3 | developer / API / SDK | 220 | `#21BCE7` | 8.6:1 | `#00aacf` | 7.0:1 | sdk-api, api, cli, adk, mcp, workflow |
 | 4 | infrastructure / edge | 250 | `#65bdff` | 9.4:1 | `#549de5` | 6.7:1 | fleet, mesh, edge, runtime |
 | 5 | production / studio | 280 | `#a5abff` | 9.0:1 | `#898ee7` | 6.5:1 | studio, autopilot, editor |
 | 6 | collaboration | 305 | `#ce9dff` | 9.1:1 | `#ab82d8` | 6.3:1 | connect, campus, academy |
@@ -48,6 +48,19 @@ WCAG vs `--bg #0b0f14`. All values verified by `staging/golden-paths-scaffolds/n
 
 Contrast targets: `--acc` on `--bg` ≥ 3:1 (UI/large-text floor; vivid tier clears the 7:1 AAA bar,
 deep tier ≥ 6.3:1). `--fg #cfe3f7` on `--bg` = 14.6:1.
+
+> **Light-theme caveat (found building nav per-product identity, 2026-09-04).** Every ratio above is
+> measured against the **dark** `--bg #0b0f14` only — this wheel has never been checked against the
+> **light** theme's `--bg #FAFAF8` (`ChassisTheme` in `tokens.css.ts`). Re-measured all 36 accents
+> currently in `packages/spoke-chassis/src/nav.ts`'s `WAVE_PRODUCTS` registry against both: every one
+> clears 4.5:1 (AA text) on dark (lowest 6.26:1); every one FAILS 4.5:1 on light (highest 2.94:1,
+> most under 2.2:1) — this palette was tuned to pop on dark and was never audited for light. Anything
+> that renders a product's accent as running TEXT (not just the favicon/dot/CTA uses already governed
+> by the ≥3:1 UI floor above) must gate through `--identity-mix` (`tokens.css.ts`) rather than assume
+> the accent is safe as text in every theme, and must NOT silently darken/desaturate the accent to
+> force a light-theme pass — demote to `--fg` instead and keep the accent as a decorative swatch/ring.
+> See `packages/spoke-chassis/src/nav-mobile-assets.ts` / `nav-products-assets.ts` for the reference
+> implementation (the subdomain nav's per-product name coloring).
 
 ## OKLCH → hex (favicons)
 

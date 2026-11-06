@@ -62,7 +62,7 @@ match the executed live Stripe migration (#38, [ADR](../../docs/meter-registry-a
 | `stream_minutes` | delivered-minute | sum | $0.005 | $0.0025 (api.video/IVS) | `wave_stream_minutes` |
 | `storage_minutes` | stored-minute-mo | last | $0.01 | $0.005 (CF Stream storage) | `wave_storage_minutes` |
 | `ai_tokens` | token | sum | $0.000015 ($15/1M) | $0.00001125 (GPT-5.5 3:1) | `wave_ai_tokens` |
-| `realtime_tokens` | token | sum | $0.000003 ($3/1M) | $0.0000009 (Cerebras gpt-oss-120b 3:1) | — |
+| `realtime_tokens` | token | sum | $0.000003 ($3/1M) | $0.0000009 (gpt-oss-120b 3:1 ceiling) | — |
 | `voice_synthesis_minutes` | synth-minute | sum | $0.25 | $0.18 (ElevenLabs) | `wave_voice_minutes`, `voice_minutes` |
 | `transcription_minutes` | transcribed-minute | sum | $0.015 | $0.0062 (AssemblyAI) | `wave_transcription_minutes` |
 | `edge_gpu_hours` | GPU-hour | sum | $0.50 | $0.24 (RunPod RTX-2000-Ada) | `wave_edge_gpu_hours` |
@@ -71,7 +71,7 @@ match the executed live Stripe migration (#38, [ADR](../../docs/meter-registry-a
 `decisions` also carries rate-variants (in `meters.json`): x402 $0.001 (10× gas-covering on-chain per-call),
 overage $0.0002 (beyond-quota), premium $0.0005 (dispatch_plus). `ai_tokens` is **passthrough** (Metronome sums
 `amount_usd`, rate_cents=100; the per-token price is applied by the emitter). `realtime_tokens` (EPIC E-RT #109,
-the T2 ultra-fast REMOTE tier — Groq LPU / Cerebras wafer-scale, 200–2600 tok/s) is likewise **passthrough**;
+the T2 ultra-fast REMOTE tier — Groq LPU, 260–1000 tok/s per [Groq models](https://console.groq.com/docs/models)) is likewise **passthrough**;
 priced BELOW frontier `ai_tokens` because the models are open-weight — the product is **speed** (real-time AI on
 live video/streaming), not model class. It carries an x402 rate-variant (10× on-chain per-token for pay-as-you-
 stream micropayments). `voice_minutes` is **deprecated** — use `voice_synthesis_minutes` (the descriptive stem

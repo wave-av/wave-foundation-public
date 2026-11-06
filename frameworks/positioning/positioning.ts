@@ -22,7 +22,7 @@ export const POSITIONING = {
   // One sentence. If a surface contradicts this, the surface is wrong — not this file.
   identity:
     "WAVE is media infrastructure for the agentic internet: one call shape moves live and on-demand " +
-    "media across every transport, and both kinds of user, people and agents, discover it, call it, " +
+    "media across every transport, and both kinds of users, people and agents, discover it, call it, " +
     "and pay for it per call.",
   tagline: "Media infrastructure for the agentic internet.",
   // The analogy — reuse where an analogy helps (grounded in the adk README; the org's strongest line).
@@ -33,7 +33,7 @@ export const POSITIONING = {
   // ── The frame (Jake 2026-09-02). Four load-bearing facts; every headline expresses one or more. ──
   frame: {
     twoUsers:
-      "The internet has two kinds of user now: people and agents. WAVE serves both on the same routes, " +
+      "The internet has two kinds of users now: people and agents. WAVE serves both on the same routes, " +
       "with the same enforcement, from one gateway.",
     oneCallShape:
       "One call shape across every transport. SRT, RIST, RTMP, WHIP and WHEP, WebRTC, MoQ, HLS, AES67, " +
@@ -93,7 +93,7 @@ export const POSITIONING = {
     money: {
       name: "WAVE Money Engine",
       what:
-        "gets both kinds of user paid on one rail: x402 and MPP on Base for agents, cards for people, " +
+        "gets both kinds of users paid on one rail: x402 and MPP on Base for agents, cards for people, " +
         "with did:wave identity, OFAC screening, and metering on the path",
       surfaces: ["https://wave.online/money-engine", "https://money-engine.wave.online"],
     },
@@ -160,7 +160,7 @@ export const POSITIONING = {
       "One gateway enforces authentication, scope, entitlement, and metering for every caller, " +
       "person or agent. The compliance posture is public and machine-readable.",
     investors:
-      "Media infrastructure for an internet with two kinds of user. Three engines under one call " +
+      "Media infrastructure for an internet with two kinds of users. Three engines under one call " +
       "shape, paid per call by people and by agents, discoverable by agents without a sales motion.",
   },
 
@@ -174,7 +174,7 @@ export const POSITIONING = {
       "media across every transport. A person calls it with a key; an agent discovers it over MCP and " +
       "pays per call over x402 or MPP on Base. Same routes, same enforcement, one gateway metering both.",
     paragraph:
-      "WAVE is media infrastructure for the agentic internet. The internet now has two kinds of user, " +
+      "WAVE is media infrastructure for the agentic internet. The internet now has two kinds of users, " +
       "people and agents, and WAVE serves both on the same routes. One call shape moves live and " +
       "on-demand media across every transport: SRT, RIST, RTMP, WHIP and WHEP, WebRTC, MoQ, HLS, AES67, " +
       "OMT and more, through one contract (the WAVE Media Engine). Every capability is paid per call by " +

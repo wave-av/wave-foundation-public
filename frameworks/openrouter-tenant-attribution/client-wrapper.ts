@@ -13,7 +13,7 @@ import {
 } from "./types.js";
 
 const TENANT_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
-// OpenRouter model slug: provider/name pattern, e.g. "anthropic/claude-sonnet-4-5".
+// OpenRouter model slug: provider/name pattern, e.g. "anthropic/claude-sonnet-5.5".
 const MODEL_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-zA-Z0-9._-]+$/;
 const OPENROUTER_API_BASE = "https://openrouter.ai/api/v1";
 
@@ -21,7 +21,6 @@ export interface ChatParams {
   model: string;
   messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
   max_tokens?: number;
-  temperature?: number;
   /** Wave per-call idempotency key, propagated as a header for OpenRouter dedupe. */
   transaction_id?: string;
   [k: string]: unknown;

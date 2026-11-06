@@ -22,7 +22,7 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 
 ### ADR-002 — Public repos vendor `_checks.yml` (cannot consume the private foundation reusable workflow)
 
-- **Ambiguity:** should a public edge repo's gate `uses:` the foundation reusable workflow directly (the consumer-gate example) or a local copy? <!-- # guard:allow historical decision-log quote of the exact unresolvable shape this ADR's own Evidence/Decision below rules out; see ADR-008 for the generalized policy -->
+- **Ambiguity:** should a public edge repo's gate `uses: wave-av/wave-foundation/.github/workflows/checks.yml@v1` (the consumer-gate example) or a local copy?
 - **Evidence:** GitHub Actions does NOT let a public repo consume a PRIVATE repo's reusable workflow — tested end-to-end on a public edge repo (the call fails in 0s, 0 jobs; the org-access setting had no effect).
 - **Decision:** public repos vendor `_checks.yml` verbatim (byte-synced to foundation `checks.yml@v1`) + a thin `foundation-gate.yml` wrapper. PRIVATE repos use the `@v1` consume path.
 - **Reversible:** yes.
@@ -34,11 +34,11 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 - **Decision:** scrub from git + serve as a Worker secret from Doppler. Do NOT rotate.
 - **Reversible:** scrub yes; rotation would NOT be → never do it.
 
-### ADR-004 — dispatch-edge is a one-way sync MIRROR; ship in PRIVATE wave-dispatch (RESOLVED 2026-06-01, HIGH confidence)
+### ADR-004 — dispatch-edge is a one-way sync MIRROR; ship in PRIVATE private-repo (RESOLVED 2026-06-01, HIGH confidence)
 
 - **Ambiguity:** the agent-commerce plan says "ship features on dispatch-edge," but dispatch-edge is a public open-core repo.
-- **Evidence (ground-truth recon):** `wave-dispatch/scripts/sync-public.sh` is one-way PRIVATE→PUBLIC — it clones the public mirror, copies a FIXED open-core subset (README, sdk-README, threat-model, BENCHMARKS, LICENSE, wrangler.example.toml, `sdk/{js,python,rust,ruby}`) into it, and `--force-with-lease`-pushes a PR to mirror master (triggered by `sync-public.yml` on push to master). **CRITICAL NUANCE:** `edge-router/worker.ts` is DELIBERATELY EXCLUDED from the sync — the public worker is a separately hand-curated reference artifact that strips proprietary routing/billing. dispatch-edge is NOT a fork (fork:false, parent:null) and has NO build/test/deploy CI (only `_checks.yml` + `foundation-gate.yml`); the real pipeline + the live deploy config live ONLY in private wave-dispatch. Sync commits are bot-authored. `rules/polyrepo-topology.md` codifies it: wave-dispatch = "Private canonical spoke…source-of-truth"; dispatch-edge = "Public mirror…one-way PR-synced…a mirror, never a fork — humans don't edit it directly."
-- **Decision:** ALL worker/routing/x402/MPP/discovery/billing CODE lands in PRIVATE `wave-dispatch/edge-router/`. Update the public surface ONLY via (a) the auto-sync subset (edit the private overlay + `sdk/{js,python,rust,ruby}`, merge to master, let `sync-public.yml` PR it), or (b) for the public reference `worker.ts`, a SEPARATE hand-curated PR that omits proprietary logic. NEVER hand-edit auto-synced files in dispatch-edge (clobbered); NEVER treat dispatch-edge as the build/deploy target.
+- **Evidence (ground-truth recon):** `private-repo/scripts/sync-public.sh` is one-way PRIVATE→PUBLIC — it clones the public mirror, copies a FIXED open-core subset (README, sdk-README, threat-model, BENCHMARKS, LICENSE, wrangler.example.toml, `sdk/{js,python,rust,ruby}`) into it, and `--force-with-lease`-pushes a PR to mirror master (triggered by `sync-public.yml` on push to master). **CRITICAL NUANCE:** `edge-router/worker.ts` is DELIBERATELY EXCLUDED from the sync — the public worker is a separately hand-curated reference artifact that strips proprietary routing/billing. dispatch-edge is NOT a fork (fork:false, parent:null) and has NO build/test/deploy CI (only `_checks.yml` + `foundation-gate.yml`); the real pipeline + the live deploy config live ONLY in private private-repo. Sync commits are bot-authored. `rules/polyrepo-topology.md` codifies it: private-repo = "Private canonical spoke…source-of-truth"; dispatch-edge = "Public mirror…one-way PR-synced…a mirror, never a fork — humans don't edit it directly."
+- **Decision:** ALL worker/routing/x402/MPP/discovery/billing CODE lands in PRIVATE `private-repo/edge-router/`. Update the public surface ONLY via (a) the auto-sync subset (edit the private overlay + `sdk/{js,python,rust,ruby}`, merge to master, let `sync-public.yml` PR it), or (b) for the public reference `worker.ts`, a SEPARATE hand-curated PR that omits proprietary logic. NEVER hand-edit auto-synced files in dispatch-edge (clobbered); NEVER treat dispatch-edge as the build/deploy target.
 - **Reversible:** yes — canonical/mirror is a per-repo policy choice; until a flip is explicitly recorded, dispatch-edge stays a mirror.
 
 ### ADR-005 — Do NOT re-add the foundation pin-check (deliberately-removed anti-pattern)
@@ -61,27 +61,6 @@ Format: **claim → evidence (ground truth, not belief) → decision → reversi
 - **Evidence:** `origin/staging` is latest; `main` lags (promotion target); the local checkout is stale/diverged; no `phase1` repo or branch exists.
 - **Decision:** always read latest from `origin/staging`; treat WSC as read-only reference (build in NEW repos).
 - **Reversible:** n/a.
-
-### ADR-008 — Public docs/templates reference only what a public consumer can resolve (2026-09-21)
-
-- **Ambiguity:** may a public repo's documentation or template snippet point a `uses:` (or
-  equivalent adoption instruction) at the private upstream repository's reusable workflow,
-  the way ADR-002 already ruled out for the `checks.yml` gate specifically?
-- **Evidence:** 0 successes across all-time run history for a public-repo caller invoking the
-  private upstream repository's reusable workflow — measured out-of-band on 2026-09-20 against
-  the calling repos' run history. A cross-org `uses:` into a private repo fails before any job
-  is created (no run, no log, no check on the head SHA), consistent with ADR-002's own
-  end-to-end test above: a public repo cannot consume a private repo's reusable workflow.
-- **Decision:** generalize ADR-002 beyond the single `checks.yml` gate — every public doc and
-  template in this repository references only what a public consumer can actually resolve:
-  either a reusable workflow this repository ships under `.github/workflows/` (via
-  `wave-av/wave-foundation-public/.github/workflows/<file>@main`), or a local vendored copy
-  (`uses: ./.github/workflows/<file>` plus a one-line note on where to copy it from), or — if
-  the workflow body isn't shipped anywhere in this repository — the doc says so plainly instead
-  of pointing at an unresolvable `uses:`. Enforced going forward by the `unresolvable-uses` rule
-  in `scripts/public-repo-guard/content-policy.sh`.
-- **Reversible:** yes (PR) — narrows further, or the guard script's allowlist, without re-litigating
-  the underlying GitHub Actions constraint.
 
 ---
 
