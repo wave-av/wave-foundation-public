@@ -337,7 +337,7 @@ function emit(checks, json, blocks) {
     process.stdout.write(
       failed.length === 0
         ? '\ngate-scope conformance: all copies of the scan/skip sets agree\n'
-        : `\ngate-scope conformance: ${failed.length} check(s) failed — see rules/file-size-limits.md and claude-workstation#586\n`,
+        : `\ngate-scope conformance: ${failed.length} check(s) failed — see rules/file-size-limits.md and private-repo#586\n`,
     );
   }
   return failed.length === 0 ? 0 : 1;

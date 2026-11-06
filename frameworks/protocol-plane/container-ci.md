@@ -9,14 +9,11 @@ Each bridge container (SRT/NDI/OMT/ffmpeg/Dante) has:
 2. A target registry to publish to (Docker Hub canonical)
 3. A wrangler.toml binding to bump after publish
 
-Rather than every container repo open-coding the build + publish + deploy dance, this is a
-reusable-workflow **template** the bridge consumer instantiates per-container — see "Consumer
-shape" below for how to adopt it. It is not shipped as a standalone file in this repository.
+Rather than every container repo open-coding the build + publish + deploy dance, wave-foundation publishes a reusable workflow that the bridge consumer instantiates per-container.
 
-## Reusable workflow shape (template — not shipped as a standalone file here)
+## Reusable workflow shape
 
-`container-deploy.yml` (copy this block into your own `.github/workflows/container-deploy.yml`,
-per "Consumer shape" below):
+`wave-foundation/.github/workflows/container-deploy.yml`:
 
 ```yaml
 name: container-deploy
@@ -90,11 +87,6 @@ jobs:
 
 ## Consumer shape (in wave-bridge-edge)
 
-The `container-deploy.yml` body above is not shipped as a standalone file under this
-repository's `.github/workflows/`, so a cross-repo `uses:` cannot reach it. Copy the
-`container-deploy.yml` code block from the "Reusable workflow shape" section above into
-your own `.github/workflows/container-deploy.yml`, then call it locally:
-
 `wave-bridge-edge/.github/workflows/srt-deploy.yml`:
 
 ```yaml
@@ -110,7 +102,7 @@ on:
 jobs:
   staging:
     if: github.ref == 'refs/heads/master'
-    uses: ./.github/workflows/container-deploy.yml
+    uses: wave-av/wave-foundation/.github/workflows/container-deploy.yml@v1
     with:
       container_dir: containers/srt
       image_name: docker.io/wave-av/wave-srt-bridge
@@ -123,7 +115,7 @@ jobs:
   production:
     needs: staging
     if: github.ref == 'refs/heads/master'
-    uses: ./.github/workflows/container-deploy.yml
+    uses: wave-av/wave-foundation/.github/workflows/container-deploy.yml@v1
     with:
       container_dir: containers/srt
       image_name: docker.io/wave-av/wave-srt-bridge
@@ -142,12 +134,9 @@ The same image tag (= short SHA) flows through staging → production. Worker va
 
 ## Public-repo consume note
 
-Because wave-bridge-edge is public and the upstream source is private, the reusable workflow
-cannot be consumed via a cross-repo `uses:` — see "Consumer shape" above: copy the
-`container-deploy.yml` block from "Reusable workflow shape" into your own
-`.github/workflows/container-deploy.yml` and call it locally with `uses: ./.github/workflows/
-container-deploy.yml`. (This supersedes an earlier plan, written before this public mirror
-repository existed, to vendor the file as `_container-deploy.yml`.)
+Because wave-bridge-edge is public and wave-foundation is private, the reusable workflow CAN be consumed if the wave-foundation `.github/workflows/container-deploy.yml` is moved into a separate **public** repo for that specific workflow OR if it's inlined into the consumer (per the public-repo `_checks.yml` pattern).
+
+**Recommendation:** mirror this workflow to `wave-av/wave-foundation-public/.github/workflows/container-deploy.yml` once we set up that mirror repo. Until then, inline it in wave-bridge-edge under `.github/workflows/_container-deploy.yml` and consume locally. Same pattern as `_checks.yml`.
 
 ## Multi-arch builds
 

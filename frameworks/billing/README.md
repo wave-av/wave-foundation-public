@@ -16,9 +16,9 @@ identical across four systems that each have their own console where someone cou
 
 ## The reference implementation
 
-`wave-av/wave-dispatch` is the proven reference — built, tested, and **applied live** (2026-05-31):
+`wave-av/private-repo` is the proven reference — built, tested, and **applied live** (2026-05-31):
 
-| Concern | Reference artifact (in wave-dispatch) |
+| Concern | Reference artifact (in private-repo) |
 |---|---|
 | Provider seam (dual-write) | `edge-router/billing/registry.ts` + `*-provider.ts` |
 | Stripe-native provisioner | `scripts/setup_stripe_native.py` |

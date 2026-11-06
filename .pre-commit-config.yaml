@@ -165,7 +165,7 @@ repos:
 
       # Thinking-capability routing gate: a ccr config must strip the `thinking` param for
       # non-reasoning models (Ollama 400s otherwise). Foundation has no ccr config, so this no-ops
-      # here; spokes (e.g. wave-dispatch) point entry at the vendored copy and validate their own
+      # here; spokes (e.g. private-repo) point entry at the vendored copy and validate their own
       # config/ccr/config.json against docs/model-thinking-capability.json. Rule:
       # rules/local-llm-thinking-capability.md.
       - id: model-thinking-capability

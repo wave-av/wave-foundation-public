@@ -34,7 +34,7 @@ export interface ProvisionInput {
   zone_id: string;
   api_token: string;
   validation_method?: ValidationMethod;
-  /** Optional Worker route binding for this hostname (e.g. "wave-dispatch"). */
+  /** Optional Worker route binding for this hostname (e.g. "private-repo"). */
   origin_worker?: string;
 }
 

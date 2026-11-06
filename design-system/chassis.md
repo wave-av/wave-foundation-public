@@ -88,7 +88,7 @@ see the dispatch surface inventory for the full P0/P1/P2 map.
 
 ## Provenance
 
-Originally extracted from `wave-dispatch-demo/edge-router/{worker,content,auth-portal}.ts` (the live
+Originally extracted from `private-repo-demo/edge-router/{worker,content,auth-portal}.ts` (the live
 dispatch portal). The favicon path is still lifted verbatim. The **design language was re-based on the
 apex (wave.online) in #164** — its tokens, humanist-sans typography, gateway-blue accent, and marketing
 component CSS were promoted into `tokens.css.ts` + `chassis.css.ts` so a new spoke is visually

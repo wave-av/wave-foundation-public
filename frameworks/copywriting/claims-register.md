@@ -4,7 +4,7 @@ _Foundation standard. The companion to `voice-and-tone.md`: where the copy-check
 gate** (it flags unsubstantiated marketing patterns in prose), the claims register is its **data
 model** — a per-surface, single source of truth for every assertion a surface is allowed to make._
 
-_Proven identical in `wave-av/wave-www` (`content/claims.ts`) and `wave-av/wave-developer`
+_Proven identical in `wave-av/private-repo` (`content/claims.ts`) and `wave-av/private-repo`
 (`content/claims.ts`); harvested here as the canonical model._
 
 ## Why this exists

@@ -44,7 +44,7 @@ The Go adapter uses `log/slog` with the JSON handler. Every line includes:
   "time": "2026-05-30T15:30:00.123Z",
   "level": "INFO|WARN|ERROR",
   "msg": "...",
-  "service": "wave-srt-bridge",          // or wave-ndi-bridge, etc
+  "service": "wave-srt-bridge",          // or private-repo-bridge, etc
   "protocol": "srt",
   "container_id": "ctr_abc123",
   "token_sub": "usr_xyz",                // when handling a tenant request
@@ -104,7 +104,7 @@ Drops you into the running container with the standard busybox toolchain. Use sp
 
 ## Per-spoke Sentry projects
 
-Per the existing [Observability framework](../observability/README.md), each spoke has its own Sentry project (`wave-srt-bridge`, `wave-ndi-bridge`, etc). The sidecar Worker for each bridge container has its own `SENTRY_DSN` env var so cross-spoke noise stays separated.
+Per the existing [Observability framework](../observability/README.md), each spoke has its own Sentry project (`wave-srt-bridge`, `private-repo-bridge`, etc). The sidecar Worker for each bridge container has its own `SENTRY_DSN` env var so cross-spoke noise stays separated.
 
 ## Linked
 

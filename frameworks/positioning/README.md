@@ -14,7 +14,7 @@ This framework owns **identity, narrative, and the canonical strings**. It sits 
 ## The locked positioning (Jake, 2026-06-06; re-framed 2026-09-02)
 
 > **WAVE is media infrastructure for the agentic internet:** one call shape moves live and on-demand
-> media across every transport, and both kinds of user, people and agents, discover it, call it, and
+> media across every transport, and both kinds of users, people and agents, discover it, call it, and
 > pay for it per call.
 
 - **Media infrastructure is the identity.** Four facts carry it (`POSITIONING.frame`): two kinds of

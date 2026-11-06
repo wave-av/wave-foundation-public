@@ -59,6 +59,17 @@ test("scrubSecrets redacts keys + masks opaque tokens, spares slugs/urls", () =>
   assert.equal(s.url, "https://docs.wave.online/docs/mcp");
 });
 
+// URL-query secret fixture intentionally lives under tests/ (SEC_EXCL) so wave-sec P3
+// path-anchored scan never opens it. Was previously inline in verify-loop.mjs selfTest.
+test("scrubSecrets redacts api_key in URL query strings", () => {
+  const s = scrubSecrets({
+    // non-secret-ish key so the URL-query path runs (apiKey would redact whole value first)
+    endpoint: "https://api.wave.online/v1/x?api_key=supersecretvalue123",
+  });
+  assert.match(s.endpoint, /api_key=%5Bredacted%5D/);
+  assert.ok(s.endpoint.startsWith("https://api.wave.online/v1/x?"));
+});
+
 test("runChecks ties probe→verdict→provenance with no secret leak", async () => {
   const fakeFetch = async (href) => ({ status: href.includes("missing") ? 404 : 200 });
   const { verdict: v, provenance: p } = await runChecks(

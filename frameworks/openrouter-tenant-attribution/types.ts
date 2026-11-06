@@ -15,7 +15,7 @@ export interface OpenRouterUsage {
 
 export interface OpenRouterAttributionEvent {
   tenant_id: TenantId;
-  /** OpenRouter model slug, e.g. "anthropic/claude-sonnet-4-5" */
+  /** OpenRouter model slug, e.g. "anthropic/claude-sonnet-5.5" */
   model: string;
   endpoint: "chat/completions";
   /** OpenRouter response id, or "" on fetch failure. */

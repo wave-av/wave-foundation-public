@@ -101,7 +101,7 @@ skip (e) and the edge becomes an open relay.
      run: |
        .foundation/frameworks/edge-proxy/verify-vendored.sh \
          --vendored src \
-         --origin-url 'env.WAVE_WWW_ORIGIN' --product www --protocol https --spoke-name wave-www
+         --origin-url 'env.WAVE_WWW_ORIGIN' --product www --protocol https --spoke-name private-repo
    ```
 
    It fails (exit 1) on any difference beyond the four placeholders, so a copy can't

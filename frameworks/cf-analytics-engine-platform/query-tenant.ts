@@ -7,6 +7,7 @@
 //   - All clause inputs (select/where/group/order) pass a TIGHT character allowlist that EXCLUDES
 //     quotes, semicolons, comment markers (--, /*, */), and dangerous SQL keywords (FROM/JOIN/
 //     UNION/SELECT/WITH/INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/TRUNCATE/REPLACE/EXEC). Anchored.
+//   - Parentheses in every clause must balance, so where_extra cannot escape its `(...)` wrapper.
 //   - since_iso must match a STRICT ISO-8601 shape, anchored at both ends, no quote chars allowed.
 //   - tenant_id interpolation single-quote-escapes (defense-in-depth; the tenant_id regex already
 //     blocks quotes, but escape unconditionally).
@@ -43,6 +44,16 @@ function assertSafeClause(name: string, value: string, code: string): void {
     if (value.includes(seq)) {
       throw new AnalyticsEngineError(`${name} contains forbidden sequence ${seq}`, code);
     }
+  }
+  // Parentheses must balance and never close past depth 0 — otherwise `where_extra` could close the
+  // `(...)` wrapper and OR past the forced tenant filter (e.g. "1=1) OR (index1 != index1").
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === "(") depth++;
+    else if (ch === ")" && --depth < 0) break;
+  }
+  if (depth !== 0) {
+    throw new AnalyticsEngineError(`${name} has unbalanced parentheses`, code);
   }
   // Case-insensitive keyword scan on whole-word boundaries.
   const upper = value.toUpperCase();

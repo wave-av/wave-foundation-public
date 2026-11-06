@@ -13,7 +13,7 @@
 export interface WaveHealth {
   /** Always `true` when the worker is serving. Liveness, not deep readiness. */
   ok: true;
-  /** Repo slug of the worker reporting, e.g. `"wave-dispatch"`. */
+  /** Repo slug of the worker reporting, e.g. `"private-repo"`. */
   service: string;
   /** Protocol-plane layer this worker sits on, e.g. `"edge"`. */
   layer: string;
@@ -28,7 +28,7 @@ export interface WaveHealth {
  * larger `/status` payload. Use {@link waveHealth} when you want a ready-to-return
  * `Response` on a worker's `/health` route.
  *
- * @param service repo slug of the reporting worker (e.g. `"wave-dispatch"`)
+ * @param service repo slug of the reporting worker (e.g. `"private-repo"`)
  * @param layer   protocol-plane layer (e.g. `"edge"`, `"bridges"`, `"local"`)
  * @param version build/foundation pin; defaults to `"unknown"`
  */
@@ -46,11 +46,11 @@ export function waveHealthObject(
  *
  * ```ts
  * if (url.pathname === "/health") {
- *   return waveHealth("wave-dispatch", "edge", env.WAVE_VERSION);
+ *   return waveHealth("private-repo", "edge", env.WAVE_VERSION);
  * }
  * ```
  *
- * @param service repo slug of the reporting worker (e.g. `"wave-dispatch"`)
+ * @param service repo slug of the reporting worker (e.g. `"private-repo"`)
  * @param layer   protocol-plane layer (e.g. `"edge"`, `"bridges"`, `"local"`)
  * @param version build/foundation pin; defaults to `"unknown"`
  */

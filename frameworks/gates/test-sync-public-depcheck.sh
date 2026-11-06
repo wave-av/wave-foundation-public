@@ -34,6 +34,14 @@ fixture() {
   printf '%s\n' "$published_body" > "$d/frameworks/gates/test-fixture.$ext"
   printf '#!/usr/bin/env bash\necho helper\n' > "$d/scripts/private-helper.sh"
   cp "$SYNC" "$d/scripts/sync-public.sh"
+  # sync-public.sh sources sync-public-deps.sh (scanner 1-3 lives there now, split out to
+  # stay within the token-budget gate's cap) -- the fixture must carry it too, or every run
+  # dies at `source` under set -e before printing missing_dep_count, which this drill greps.
+  cp "$(dirname "$SYNC")/sync-public-deps.sh" "$d/scripts/sync-public-deps.sh"
+  # Same for the private-repo-name detector and its visibility snapshot: sync-public.sh fails
+  # closed (exit 2, no missing_dep_count line) when either is absent.
+  cp "$(dirname "$SYNC")/public-mirror-refs.pl" "$d/scripts/public-mirror-refs.pl"
+  cp "$(dirname "$SYNC")/public-mirror-repos.tsv" "$d/scripts/public-mirror-repos.tsv"
   git -C "$d" init -q
   git -C "$d" add -A
   git -C "$d" -c user.email=t@t -c user.name=t commit -qm fixture
@@ -44,7 +52,12 @@ count_for() {
   local d body ext
   body="$1"
   ext="${2:-sh}"
-  d="$(mktemp -d)"
+  # Explicit guard: set -e does not reach inside $(count_for ...). Unguarded, a failed mktemp left
+  # d="" and `git -C "" add -A && commit` committed the CALLER's whole working tree (hit 2026-11-06).
+  d="$(mktemp -d "${TMPDIR:-/tmp}/sync-depcheck.XXXXXX")" && [ -n "$d" ] && [ -d "$d" ] || {
+    echo "mktemp failed — refusing to build a fixture in the current directory" >&2
+    return 2
+  }
   fixture "$d" "$body" "$ext"
   ( cd "$d" && bash scripts/sync-public.sh 2>/dev/null || true ) \
     | grep -oE '^missing_dep_count=[0-9]+' | tail -1 | cut -d= -f2

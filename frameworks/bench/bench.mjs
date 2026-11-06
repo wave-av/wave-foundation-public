@@ -13,11 +13,21 @@
 // MCP /.well-known (modelcontextprotocol.io), x402 402 (x402.org), A2A agent-card.
 //
 // Usage:  node scripts/bench.mjs --profile blog --base https://blog.wave.online [--json] [--family security]
-//   env:  BENCH_BASE  BENCH_PROFILE  BENCH_MIN_GRADE(default B)
+//   env:  BENCH_BASE  BENCH_PROFILE  BENCH_MIN_GRADE(default B)  BENCH_MIN_FAMILY_GRADE(default C)
 //
 // Security: same-origin GET/POST only (SSRF — manifest-derived URLs re-validated); per-request timeout +
 // size cap; one redirect; fixed UA; linear regex (no dynamic RegExp); guarded JSON.parse; probes carry no
 // credentials and are bounded to one attempt; never logs secrets or raw error objects (message only).
+//
+// Gate shape: the OVERALL grade is a single weighted average across every check in every family
+// (see `main()` — E/T pooled, not per-family), so one large-A family can mathematically absorb a
+// small failing family (e.g. 3 perf checks failing inside ~75 total checks barely dents the pooled
+// %). A single pooled threshold therefore cannot guarantee "no family failed" — it only guarantees
+// "the average didn't fail". To close that, `main()` ALSO enforces an independent per-family FLOOR
+// (BENCH_MIN_FAMILY_GRADE, default C): if ANY family's own grade is below the floor, the run fails
+// regardless of the pooled grade. A family that produced zero measured checks for a profile where
+// the registry says it should apply (e.g. an item-only family on a profile that enumerated no items)
+// is its own state — "not measured" — and is treated as a floor failure, never a silent pass.
 
 // ─────────────────────────── args / config ───────────────────────────
 function parseArgs(argv) {
@@ -36,6 +46,7 @@ const ARGS = parseArgs(process.argv.slice(2));
 const BASE = (ARGS.base || process.env.BENCH_BASE || "https://blog.wave.online").replace(/\/+$/, "");
 const PROFILE = (ARGS.profile || process.env.BENCH_PROFILE || "blog").toLowerCase();
 const MIN = (ARGS["min-grade"] || process.env.BENCH_MIN_GRADE || "B").toUpperCase();
+const MIN_FAMILY = (ARGS["min-family-grade"] || process.env.BENCH_MIN_FAMILY_GRADE || "C").toUpperCase();
 const JSON_OUT = !!ARGS.json;
 const ONLY_FAMILY = typeof ARGS.family === "string" ? ARGS.family : null;
 const ORIGIN = new URL(BASE).origin;
@@ -95,55 +106,25 @@ const decodeEntities = (s) =>
   s.replace(/&#0?39;|&#x27;/gi, "'").replace(/&quot;|&#0?34;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&hellip;|&#8230;/gi, "…").replace(/&amp;/gi, "&");
 const attr = (h, re) => (h.match(re) || [, ""])[1];
 const hasMeta = (h, prop, val) => h.includes(`${prop}="${val}"`) || h.includes(`${prop}='${val}'`);
-// Excise every <tag ...>...</tag> block (case-insensitive). Fixes CodeQL js/bad-tag-filter's four
-// facets vs. the old `/<tag[\s\S]*?<\/tag>/` family: (1) `\b` on the OPEN tag so `<scripter>` is never
-// misread as `<script>`; (2)/(3) the CLOSE tag is `<\/tag\b[^>]*>` — attribute- and whitespace-tolerant
-// (`</script foo="bar">`, `</script >`), not a rigid literal `<\/tag>`; (4) an unclosed open tag FAILS
-// CLOSED — it consumes to end-of-string instead of leaking every byte after it. Each excised block
-// (or block-with-no-close) collapses to a single space, matching the old "replace the block with one
-// space" contract so downstream `\s+` collapsing still behaves.
-function stripTagBlocks(html, tag) {
-  const open = new RegExp(`<${tag}\\b[^>]*>`, "gi");
-  const close = new RegExp(`<\\/${tag}\\b[^>]*>`, "i");
-  let out = "";
-  let cursor = 0;
-  let m;
-  while ((m = open.exec(html))) {
-    if (m.index < cursor) { open.lastIndex = cursor; continue; }
-    out += html.slice(cursor, m.index) + " ";
-    const tail = html.slice(m.index + m[0].length);
-    const end = tail.match(close);
-    cursor = end ? m.index + m[0].length + end.index + end[0].length : html.length;
-    open.lastIndex = cursor;
-  }
-  return out + html.slice(cursor);
-}
-export function visibleText(h) {
-  let out = stripTagBlocks(h, "script");
-  out = stripTagBlocks(out, "style");
-  for (const tag of ["nav", "footer", "header"]) out = stripTagBlocks(out, tag);
-  return out
+function visibleText(h) {
+  return h
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
-export function jsonLd(h) {
+function jsonLd(h) {
   const out = [];
-  const open = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>/gi;
-  const close = /<\/script\b[^>]*>/i;
-  let m;
-  while ((m = open.exec(h))) {
-    const tail = h.slice(m.index + m[0].length);
-    const end = tail.match(close);
-    const body = end ? tail.slice(0, end.index) : tail;
+  for (const m of h.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
-      const v = JSON.parse(body.trim());
+      const v = JSON.parse(m[1].trim());
       const nodes = Array.isArray(v) ? v : v["@graph"] && Array.isArray(v["@graph"]) ? v["@graph"] : [v];
       out.push(...nodes);
     } catch {
       /* a malformed block is reported by the jsonld-valid check */
     }
-    open.lastIndex = m.index + m[0].length + (end ? end.index + end[0].length : tail.length);
   }
   return out;
 }
@@ -278,8 +259,14 @@ async function enumItems(params) {
 // ─────────────────────────── grading ───────────────────────────
 const GRADE = (p) => (p >= 90 ? "A" : p >= 80 ? "B" : p >= 70 ? "C" : p >= 60 ? "D" : "F");
 const RANK = { A: 4, B: 3, C: 2, D: 1, F: 0 };
-const applies = (c) => (c.profiles === "*" || c.profiles.includes(PROFILE)) && (!ONLY_FAMILY || c.family === ONLY_FAMILY);
+const profileMatch = (c) => c.profiles === "*" || c.profiles.includes(PROFILE);
+const applies = (c) => profileMatch(c) && (!ONLY_FAMILY || c.family === ONLY_FAMILY);
 const mark = (p) => (p ? "✓" : "✗");
+// Families the registry says apply to THIS profile (ignoring the manual --family debug filter,
+// which deliberately zeroes out every other family and must not be confused with a real gap).
+const EXPECTED_FAMILIES = ONLY_FAMILY
+  ? null
+  : [...new Set([...SITE_CHECKS, ...ITEM_CHECKS].filter(profileMatch).map((c) => c.family))];
 
 async function main() {
   const params = PROFILES[PROFILE] || PROFILES.apex;
@@ -310,10 +297,24 @@ async function main() {
   const families = Object.fromEntries(Object.entries(fam).map(([k, v]) => { E += v.e; T += v.t; return [k, { pct: v.t ? Math.round((v.e / v.t) * 100) : 100, grade: GRADE(v.t ? (v.e / v.t) * 100 : 100) }]; }));
   const pct = T ? Math.round((E / T) * 100) : 0;
   const grade = GRADE(pct);
-  const ok = RANK[grade] >= (RANK[MIN] ?? 3);
+  const aggregateOk = RANK[grade] >= (RANK[MIN] ?? 3);
+
+  // Per-family FLOOR — independent of the pooled aggregate above, so a small failing family can no
+  // longer hide inside a large passing one. A family the registry expects for this profile but that
+  // measured ZERO checks (e.g. an item-only family on a profile that enumerated no items) is its own
+  // "not measured" state — floored the same as a measured failure, never treated as a silent pass.
+  const floorRank = RANK[MIN_FAMILY] ?? RANK.C;
+  const familyReport = (EXPECTED_FAMILIES ?? Object.keys(families)).map((f) => {
+    const v = families[f];
+    if (!v) return { family: f, measured: false, pct: null, grade: null, ok: false };
+    return { family: f, measured: true, pct: v.pct, grade: v.grade, ok: RANK[v.grade] >= floorRank };
+  });
+  const familyFailures = familyReport.filter((f) => !f.ok);
+  const familyFloorOk = ONLY_FAMILY ? true : familyFailures.length === 0;
+  const ok = aggregateOk && familyFloorOk;
 
   if (JSON_OUT) {
-    console.log(JSON.stringify({ base: BASE, profile: PROFILE, grade, pct, families, items: items.length, fixes: [...fixes.values()], pass: ok }, null, 2));
+    console.log(JSON.stringify({ base: BASE, profile: PROFILE, grade, pct, families, items: items.length, fixes: [...fixes.values()], familyFloor: { min: MIN_FAMILY, ok: familyFloorOk, failures: familyFailures }, aggregateOk, pass: ok }, null, 2));
   } else {
     console.log(`\n  wave-bench · ${PROFILE} · ${BASE}\n  ${"─".repeat(60)}`);
     let lastScope = "";
@@ -321,10 +322,13 @@ async function main() {
     console.log(`\n  ${"─".repeat(60)}\n  FAMILIES: ${Object.entries(families).map(([k, v]) => `${k} ${v.grade}(${v.pct}%)`).join("  ·  ")}`);
     console.log(`  GRADE  ${grade}  (${pct}%  ·  ${items.length} item(s))\n`);
     if (fixes.size) { console.log("  FIXES:"); for (const f of fixes.values()) console.log(`   • ${f}`); console.log(""); }
-    console.log(`  ${ok ? "PASS" : "FAIL"} — threshold ${MIN}\n`);
+    if (familyFailures.length) {
+      console.log("  FAMILY FLOOR FAILURES:");
+      for (const f of familyFailures) console.log(`   • ${f.family} — ${f.measured ? `${f.grade}(${f.pct}%) below floor ${MIN_FAMILY}` : "NOT MEASURED (expected by profile, 0 checks ran)"}`);
+      console.log("");
+    }
+    console.log(`  ${ok ? "PASS" : "FAIL"} — threshold ${MIN} aggregate, ${MIN_FAMILY} per-family floor\n`);
   }
   process.exit(ok ? 0 : 1);
 }
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });
-}
+main().catch((e) => { console.error("bench failed:", e instanceof Error ? e.message : "unknown"); process.exit(2); });

@@ -4,7 +4,7 @@
     "test-contract": {
       "reason": "no-test-command",
       "declared_at": "2026-08-30",
-      "by": "contract-rollout"
+      "by": "contract-rollout-fix"
     }
   }
 }

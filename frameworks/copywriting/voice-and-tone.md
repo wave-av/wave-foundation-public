@@ -85,6 +85,26 @@ never retroactively fails unswept files.
 - Links: descriptive text — **never "click here"**.
 - Errors: `[What happened]. [How to fix].` Never blame the user; never "Something went wrong."
 
+### Mechanics gate (`check-copy-grammar.mjs`, this directory)
+
+Grammar and mechanics are linted, not reviewed. `copy-checker.sh` runs it per file; consumer repos
+vendor the same three files (`check-copy-grammar.mjs`, `copy-grammar-rules.mjs`, the test) byte-identical
+into `scripts/` and wire `check:copy` into CI. Rules (error unless marked warn):
+
+- **count-noun-agreement** — the noun after "kinds of / types of / two / both / many" is plural:
+  "two kinds of users", never "two kinds of user" (the apex hero kicker shipped the singular, 2026-09-03). <!-- copy-grammar-ignore: count-noun-agreement — quotes the defect -->
+- **cta-caps** — labels are sentence case. No ALL-CAPS ("GET API KEY") and no Title Case ("Get API Key")
+  in source; a mono-caps kicker gets its caps from CSS `text-transform: uppercase`, never from the string.
+- **api-term-case** — "API" as a term; lowercase `api` is only a host, path or identifier.
+- **login-verb-noun** — "log in" / "sign in" / "set up" are verbs; "login" / "sign-in" / "setup" are nouns
+  and modifiers ("the sign-in page", "your login expired").
+- **double-space**, **string-whitespace** — no double spaces in copy; no padded copy strings.
+- **oxford-comma** (warn) — three-item lists carry the serial comma.
+- **em-dash-budget** (warn; `--strict-em-dash` to fail) — one em-dash per file is the budget.
+
+Suppress a single line with `copy-grammar-ignore: <rule-id>` in a comment and a reason; every
+suppression is a receipt the reviewer sees. Rules change in the SSOT only.
+
 ## Terminology
 
 | Use | Not |

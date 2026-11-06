@@ -17,13 +17,13 @@ machine to find and pay for directly.
 ## What WAVE is
 
 **WAVE is media infrastructure for the agentic internet.** One call shape moves live and on-demand
-media across every transport, and both kinds of user, people and agents, discover it, call it, and pay
+media across every transport, and both kinds of users, people and agents, discover it, call it, and pay
 for it per call. A person integrates once with a key. An agent reads the skills index, calls the same
 route, and settles over HTTP-402. Same routes, same enforcement, one gateway metering both.
 
 Four facts carry the frame:
 
-1. **Two kinds of user.** People and agents, served on the same routes from one gateway.
+1. **Two kinds of users.** People and agents, served on the same routes from one gateway.
 2. **One call shape across every transport.** SRT, RIST, RTMP, WHIP and WHEP, WebRTC, MoQ, HLS, AES67,
    OMT and more sit behind one API. Add a transport and the caller changes nothing.
 3. **Paid per call by either kind of user.** x402 and MPP on Base for agents, a key and a card for
@@ -43,7 +43,7 @@ integrity, sync, reliability, and metering. Add a protocol and it inherits all o
 hard parts per format. Real adapters ship on it today; each capability carries its status: live,
 building, or planned.
 
-### The WAVE Money Engine: get both kinds of user paid
+### The WAVE Money Engine: get both kinds of users paid
 
 Payment, identity, and compliance are native to the same surface, not bolted on. WAVE runs a public
 x402 facilitator, live on Base mainnet: an agent proves its identity with a `did:wave` credential,
@@ -56,7 +56,8 @@ lets media infrastructure serve agents as first-class customers.
 Once media can move and value can settle, something still has to decide what compute each request
 needs. The Dispatch Engine classifies a prompt at the edge and returns a routing decision in
 milliseconds: which tier runs the work, at what cost, under whose keys. WAVE bills the decision,
-$0.0001 over x402 or a card subscription, and never the inference. Keys, prompts, and models stay on
+$0.0001 over x402 or by card, charged per call like every other WAVE capability, and never the
+inference. Keys, prompts, and models stay on
 the caller's infrastructure; that wall is the product. Like every WAVE capability, each decision is
 callable with a key and payable by an agent over HTTP-402 on the same route, and the service runs in
 production at `dispatch.wave.online`. It is an engine, not an AI feature: it does not replace models,

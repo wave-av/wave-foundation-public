@@ -41,12 +41,27 @@ while IFS= read -r f; do
   # ERROR — the superseded 2026-06-06 identity. Media is the identity (2026-09-02); video is a capability inside it.
   grep -qiE 'video infrastructure for the agentic internet' "$f" \
     && report ERROR "$f" "'video infrastructure for the agentic internet' is superseded — use 'Media infrastructure for the agentic internet.' (POSITIONING.tagline)."
-  # ERROR — a capability asserted as the identity ("WAVE is a video API"). Lead with the infrastructure frame.
-  grep -qiE '\bWAVE is (a |an |the )?(video|transcription|streaming|captions?) (API|platform|service)\b' "$f" \
+  # ERROR — a capability asserted as the identity ("WAVE is a video API"). Lead with the infrastructure
+  # frame. The connector isn't only "is" — colon/dash/comma headline forms ("WAVE: a video API",
+  # "WAVE — a video API", "WAVE, a video API") assert the same thing (#1454 finding 4).
+  grep -qiE '\bWAVE\b[[:space:]]*(is\b|:|,|-|—)[[:space:]]*(a |an |the )?(video|transcription|streaming|captions?) (API|platform|service)\b' "$f" \
     && report ERROR "$f" "a capability is not the identity — lead with 'media infrastructure for the agentic internet'; name the capability beneath it (POSITIONING.capabilities.rule)."
-  # ERROR — truth law: WAVE holds no SOC 2 attestation. Vendor attribution (Cloudflare/Supabase/Stripe, 'Type II infrastructure', subprocessor rows) is allowed.
-  grep -iE 'SOC ?2' "$f" | grep -qviE 'cloudflare|supabase|stripe|vendor|subprocessor|type ii|no soc 2|not soc 2|never say|never claim|for wave itself' \
-    && report ERROR "$f" "SOC 2 stated without vendor attribution — WAVE holds no SOC 2 attestation; attribute vendors or cut."
+  # ERROR — truth law: WAVE holds no SOC 2 attestation of ANY type. Vendor attribution
+  # (Cloudflare/Supabase/Stripe/vendor/subprocessor) or an explicit negation ('no SOC 2'/'not SOC 2') is
+  # allowed — but the safe term must be part of the SAME claim, not merely present anywhere else on the
+  # line (#1454 finding 2: "We're SOC 2 like Cloudflare" must still error). "Type II" is NOT a safe term
+  # on its own (#1454 finding 3) — an unattributed "SOC 2 Type II certified" claim must still error.
+  while IFS= read -r claim; do
+    [ -z "$claim" ] && continue
+    # A comparison word right after the mention ("SOC 2 like/such as/similar to X") is a false
+    # attribution, never a real one — veto before checking for a safe term at all.
+    if printf '%s\n' "$claim" | grep -qiE 'soc ?2[[:space:]]*(like|such as|similar to|e\.g\.?)\b'; then
+      report ERROR "$f" "SOC 2 stated without vendor attribution — WAVE holds no SOC 2 attestation; attribute vendors or cut."
+      continue
+    fi
+    printf '%s\n' "$claim" | grep -qviE 'cloudflare|supabase|stripe|vendor|subprocessor|no soc ?2|not soc ?2|never say|never claim|for wave itself' \
+      && report ERROR "$f" "SOC 2 stated without vendor attribution — WAVE holds no SOC 2 attestation; attribute vendors or cut."
+  done < <(grep -oiE '.{0,40}soc ?2.{0,60}' "$f")
   # WARN — truth law: no 'first on x402' class claim (every capability is x402-payable; 'first' is unverified).
   grep -qiE '\bfirst\b[^.]{0,30}\bx402\b|\bx402\b[^.]{0,30}\bfirst\b' "$f" \
     && report WARN "$f" "'first' near 'x402' — no 'first on x402' claims; say every capability is x402-payable."

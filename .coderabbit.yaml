@@ -7,24 +7,36 @@ language: en-US
 reviews:
   auto_review:
     enabled: true
-    base_branches:
-      - main
-      - master
-      - develop
-      - "release/*"
-      - "hotfix/*"
+    # Trunk only. The default branch is ALWAYS reviewed and this key only ADDS bases; its values
+    # are unanchored regexes, so the old `main` entry also matched any base containing "main"
+    # (e.g. stacked PRs into fix/domain-*). master/develop/release/hotfix had zero PRs in the last
+    # 200 (measured 2026-09-22). Empty = review PRs into the default branch and nothing else.
+    base_branches: []
+    # Bot-authored PRs are skipped silently and this wins over labels and `enabled`
+    # (docs.coderabbit.ai/configuration/auto-review). Exact, case-sensitive logins taken from this
+    # org's PR authors. The agent fleet authors as a HUMAN account and is NOT listed: skipping it
+    # would remove CodeRabbit from every PR the merge gate scores.
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "renovate[bot]"
+      - "github-actions[bot]"
+      - "devin-ai-integration[bot]"
+      - "cursor[bot]"
+      - "wave-av-release-bot[bot]"
     ignore_title_keywords:
       - "WIP"
       - "DO NOT MERGE"
       - "[DRAFT]"
       - "[SKIP CI]"
     drafts: false
-    # #55 credit-burn fix: stop re-review-on-every-push (the confirmed fleet-wide
-    # burn driver, amplified by many ephemeral agent-worktree PRs). One full review
-    # per PR is kept; pushing more commits does not re-trigger it automatically.
-    # `@coderabbitai review` still works on demand for real PRs that need a re-look.
-    auto_incremental_review: false
-    auto_pause_after_reviewed_commits: 1
+    # INCREMENTAL ONLY (reversed 2026-09-22). Each push reviews "the commits added since the last
+    # review", not the whole PR. `false` left the head SHA with the status "Review skipped:
+    # incremental reviews are disabled" (measured on a private fleet repo's PR), which the merge gate
+    # (private-repo review-liveness) scores as CodeRabbit did-not-run. Pausing does the same,
+    # so pausing is off. NOTE: the wave-av org Global Override pins these two keys to false/1 and
+    # supersedes this file until the operator removes them there.
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
     # Opt-out for throwaway/ephemeral PRs only: apply the `skip-review` label to skip
     # (negative match; PRs without it are unaffected — real PRs keep full coverage).
     labels:
@@ -57,6 +69,12 @@ reviews:
     - "!**/out/**"
     - "!**/coverage/**"
     - "!**/__snapshots__/**"
+    - "!**/*.snap"
+    - "!**/*.generated.*"
+    - "!**/*.lockb"
+    - "!package-lock.json"
+    - "!pnpm-lock.yaml"
+    - "!yarn.lock"
     - "!**/*.min.js"
     - "!**/*.min.css"
     - "!**/*.png"
@@ -64,6 +82,36 @@ reviews:
     - "!**/*.svg"
     - "!**/*.woff2"
     - "!**/*.mp4"
+
+  # Four standing rules, stated in plain English so a reviewer can apply them to any matching file.
+  # Each came from a defect class this fleet has shipped before; flag a violation as a real bug.
+  path_instructions:
+    - path: "**/*.{ts,tsx,js,mjs,cjs}"
+      instructions: |
+        Money-moving endpoints must verify org ownership of addresses. Any handler that sends,
+        pays, refunds, withdraws, settles or otherwise moves funds must first confirm that the
+        caller's organization owns the source address, wallet, account or payout destination it
+        acts on. Checking that the caller is logged in is not enough. Flag any money-moving path
+        where the address comes from the request and is used before that ownership check.
+    - path: "**/*.{ts,tsx,js,mjs,cjs}"
+      instructions: |
+        Secrets must only be forwarded to https allowlisted URLs. When code sends a secret (an API
+        key, token, signing secret, cookie or Authorization header) in an outbound request, the
+        destination must use https and must match a fixed allowlist of hosts. Flag any secret sent
+        to a URL built from user input, config the caller controls, or plain http.
+    - path: "**/*.{ts,tsx,js,mjs,cjs}"
+      instructions: |
+        Durable Object multi-statement writes go in a transaction. Inside a Durable Object, two or
+        more writes that must succeed or fail together (storage.put/delete pairs, or several SQL
+        statements) must run in one transaction, such as ctx.storage.transaction() or
+        transactionSync(). Flag related writes that run as separate calls, where a failure or
+        eviction between them would leave state half-written.
+    - path: "**/*.{ts,tsx,js,mjs,cjs}"
+      instructions: |
+        No silent error swallowing in Workers. In Cloudflare Worker code, a catch block, .catch()
+        handler or Promise.allSettled result must log the error, rethrow it, or return an error
+        response. Flag an empty catch, a catch that only returns a default value, and a waitUntil
+        or background promise whose failure nobody observes.
 
   labeling_instructions:
     - label: "security"

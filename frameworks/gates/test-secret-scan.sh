@@ -32,6 +32,11 @@ fail() { printf '  FAIL %s\n' "$1"; fails=$((fails + 1)); }
 # contains a credential-shaped string — otherwise the gate would flag its own test suite.
 canary="AKIA$(printf 'ABCDEFGHIJKLMNOP')"
 
+# Cleared for every run here: this suite runs inside CI, where GITHUB_EVENT_NAME would otherwise
+# select base-commit exceptions for these plain-tree cases. test-secret-scan-exceptions.sh covers
+# that mode.
+gate_env=(env -u GITHUB_EVENT_NAME -u PR_BASE_SHA -u PR_HEAD_SHA -u MERGE_BASE_SHA)
+
 # new_tree <name> — a fresh scan root containing one file with the canary in it.
 new_tree() {
   local d="$work/$1"
@@ -48,7 +53,7 @@ new_tree() {
 # the pipeline "fails" on output that DOES contain the text — a race that flaked in CI.
 expect() {
   local name="$1" want_exit="$2" want_text="$3" tree="$4" out rc
-  out="$(cd "$tree" && bash "$GATE" 2>&1)"; rc=$?
+  out="$(cd "$tree" && "${gate_env[@]}" bash "$GATE" 2>&1)"; rc=$?
   if [ "$rc" -ne "$want_exit" ]; then
     fail "$name — exit $rc, want $want_exit"
     printf '       output: %s\n' "$(printf '%s' "$out" | head -3)"
@@ -185,7 +190,7 @@ else
   # gate can least afford.
   expect_inline() {
     local name="$1" want_exit="$2" want_text="$3" tree="$4" out rc
-    out="$(cd "$tree" && bash -e "$inline_block" 2>&1)"; rc=$?
+    out="$(cd "$tree" && "${gate_env[@]}" bash -e "$inline_block" 2>&1)"; rc=$?
     if [ "$rc" -ne "$want_exit" ]; then
       fail "$name — exit $rc, want $want_exit"
       printf '       output: %s\n' "$(printf '%s' "$out" | head -3)"
@@ -227,6 +232,11 @@ else
   printf '# covers the canary\nsrc/config.js\n' > "$t/.github/.secret-allowlist"
   expect_inline "S  workflow: allowlist COVERS it    -> clean" 0 "secret-scan clean" "$t"
 fi
+
+# Run from here so the one CI step that runs this suite (self-check, and its Buildkite gate) covers it.
+for suite in exceptions line-entries tempfiles base-tree; do
+  bash "$HERE/test-secret-scan-$suite.sh" || fails=$((fails + 1))
+done
 
 echo
 if [ "$fails" -eq 0 ]; then

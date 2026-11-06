@@ -32,14 +32,14 @@ Other Layer 0 patterns:
 Hardware repos (designs, profiles, certify CLI) typically only `expose` and don't `consume` runtime WAVE products. Use the `tags` array to mark `"hardware-spec"` so the aggregator groups them.
 
 - **wave-certify**: `exposes.cli`, `consumes.foundationFrameworks = ["frameworks/protocol-plane"]`.
-- **wave-hardware-designs**: nothing in `exposes` (it's just CAD); `tags = ["hardware-spec", "openscad"]`.
+- **private-repo**: nothing in `exposes` (it's just CAD); `tags = ["hardware-spec", "openscad"]`.
 
 ## Non-plane: SDKs, marketing sites, agent tools
 
 For repos that don't fit a layer, set `planeLayer: null` and lean on `tags`:
 
 - **sdks** (TypeScript open-core): `tags = ["sdk", "public", "open-core"]`, `consumes.waveProducts = [{ repo: "wave-av/api-spec" }]`.
-- **wave-www** (apex marketing site): `tags = ["marketing", "public", "cloudflare-worker"]`.
+- **private-repo** (apex marketing site): `tags = ["marketing", "public", "cloudflare-worker"]`.
 - **adk** (Agent Developer Kit): `exposes.mcpTools` enumerates every tool the kit registers.
 
 ## Build-on-WAVE meta
