@@ -30,7 +30,7 @@ thinking, effort up to `xhigh`. Never call it directly — it is the tier-4 subs
 | You may find | Replace with |
 |--------------|--------------|
 | `claude-opus-4-7` / `-4-6` / `-4-5` / `-4-1` / `-4-0` | `claude-opus-4-8` |
-| `claude-sonnet-4-5` / `-4-0` / `-3-*` | `claude-sonnet-4-6` |
+| `claude-sonnet-4-5` / `-4-0` / `-3-*` | `claude-sonnet-5-5` |
 | `claude-haiku-3-*` | `claude-haiku-4-5` |
 | any date-suffixed opus/sonnet alias | the bare alias |
 

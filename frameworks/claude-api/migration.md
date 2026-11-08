@@ -25,7 +25,7 @@ Use these exact strings. Never add a date suffix to an alias.
 | If code/config says… | Migrate to | Tier role |
 |----------------------|-----------|-----------|
 | `claude-opus-4-7`, `-4-6`, `-4-5`, `-4-1`, `-4-0` | **`claude-opus-4-8`** | most-capable; default frontier/reasoning. 1M ctx, 128K out |
-| `claude-sonnet-4-5`, `-4-0`, `-3-*` (any 3.x) | **`claude-sonnet-4-6`** | balanced. 1M ctx, 64K out |
+| `claude-sonnet-4-5`, `-4-0`, `-3-*` (any 3.x) | **`claude-sonnet-5-5`** | balanced. 1M ctx, 128K out. Sonnet 4.5 retires 2026-11-30 |
 | `claude-haiku-3-*` (any 3.x) | **`claude-haiku-4-5`** | fast/cheap. 200K ctx |
 | any `claude-opus-4-6-YYYYMMDD` (date-suffixed) | strip suffix → **`claude-opus-4-8`** | date-suffixed aliases are an anti-pattern |
 
@@ -54,6 +54,10 @@ this is a hard break, not a deprecation warning. Migrate before flipping the mod
   empty). Set `thinking.display:"summarized"` to surface progress in UI.
 - **Sonnet 4.6** still **accepts `temperature`** (Opus 4.8/4.7 do not); supports adaptive thinking +
   `effort` (default `high`); `budget_tokens` deprecated there too.
+- **Sonnet 5.5** (the target for Sonnet 4.5 and older) does **not**: a non-default `temperature` /
+  `top_p` / `top_k` returns **400**, and so do `budget_tokens` and `thinking={type:"disabled"}` (send
+  `thinking={type:"between_tools"}` to turn thinking off). Thinking runs adaptive by default, so read
+  the first `text` block of `content`, not `content[0]`. `effort` defaults to `high`.
 
 ### Stop-reason handling (all tiers)
 

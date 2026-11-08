@@ -46,7 +46,7 @@ Any ID below is retired/legacy. Replace at the routing-config level; do not leav
 | If you see… | Migrate to |
 |-------------|------------|
 | `claude-opus-4-7` / `4-6` / `4-5` / `4-1` / `4-0` | `claude-opus-4-8` |
-| `claude-sonnet-4-5` / `4-0` / `3-x` | `claude-sonnet-4-6` |
+| `claude-sonnet-4-5` / `4-0` / `3-x` | `claude-sonnet-5-5` |
 | `claude-haiku-3-x` | `claude-haiku-4-5` |
 | **any** date-suffixed opus/sonnet alias (e.g. `…-20260205`) | the bare alias above |
 

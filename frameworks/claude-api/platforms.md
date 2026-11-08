@@ -32,7 +32,7 @@ Default model is **`claude-opus-4-8`** everywhere (exact string, never date-suff
 | Microsoft Foundry | bare = the **deployment name** you chose (defaults to model ID) | `claude-opus-4-8` |
 
 Vertex pins some legacy IDs with `@date` (e.g. `claude-sonnet-4-5@20250929`) — current-gen
-(`opus-4-8/4-7/4-6`, `sonnet-4-6`) are bare. Vertex lifecycle dates are set by Google **independently**
+(`opus-4-8/4-7/4-6`, `sonnet-5-5`, `sonnet-4-6`) are bare. Vertex lifecycle dates are set by Google **independently**
 of Anthropic's deprecation schedule.
 
 ## Feature parity matrix
