@@ -60,7 +60,7 @@ client SDKs. The 129 figure counts conceptual/endpoint pages, not the ~1,540 raw
 | `structured-outputs.md` | ✅ [`request-surface.md`](./request-surface.md) | `output_config.format`; `output_format` deprecated |
 | `adaptive-thinking.md` | ✅ [`thinking-and-effort.md`](./thinking-and-effort.md) | Opus 4.8/4.7 adaptive-ONLY; `budget_tokens`→400 |
 | `extended-thinking.md` | ✅ [`thinking-and-effort.md`](./thinking-and-effort.md) | legacy manual-budget context |
-| `effort.md` | ✅ [`thinking-and-effort.md`](./thinking-and-effort.md) | `output_config.effort` low/med/high/max/xhigh; default high; xhigh+max Opus-only; ERRORS on haiku-4-5 |
+| `effort.md` | ✅ [`thinking-and-effort.md`](./thinking-and-effort.md) | `output_config.effort` low/med/high/max/xhigh; default high (medium on Opus 5.5 / Haiku 5.5); xhigh on Opus 4.7+, Sonnet 5+, Haiku 5.5, Fable; max on Opus/Sonnet 4.6+; ERRORS on haiku-4-5 |
 | `task-budgets.md` (beta) | ✅ [`context-management.md`](./context-management.md) | beta budget caps |
 | `fast-mode.md` (research preview) | ✅ [`model-matrix.md`](./model-matrix.md) | haiku-4-5 fast lane note |
 | `prompt-caching.md` | ✅ [`prompt-caching.md`](./prompt-caching.md) | prefix-match; ephemeral; ≤4 breakpoints; min prefix **opus-4-8=1024** (live doc; older cached table said 4096 — flagged), sonnet-4-6=1024, haiku-4-5=4096; read 0.1x / 5m write 1.25x / 1h write 2x; ZDR-eligible |
@@ -181,7 +181,7 @@ that decision, except the product overview which is 🚫 N/A as a non-API market
 These are reconfirmed against the snapshot, not training data — where they disagree, the snapshot wins:
 
 - Default model `claude-opus-4-8` (exact alias; never date-suffix). `sonnet-4-6` balanced; `haiku-4-5` fast.
-- Opus 4.8/4.7: thinking **adaptive-only** (`budget_tokens`→400); `temperature`/`top_p`/`top_k`→400. Effort in `output_config.effort` (low|medium|high|max, +xhigh); default high; xhigh/max Opus-only; effort **ERRORS on haiku-4-5**. `thinking.display` omitted|summarized.
+- Opus 4.8/4.7: thinking **adaptive-only** (`budget_tokens`→400); `temperature`/`top_p`/`top_k`→400. Effort in `output_config.effort` (low|medium|high|max, +xhigh); default high (medium on Opus 5.5 / Haiku 5.5); xhigh on Opus 4.7+, Sonnet 5+, Haiku 5.5, Fable; max on Opus/Sonnet 4.6+; effort **ERRORS on haiku-4-5**. `thinking.display` omitted|summarized.
 - Last-assistant prefill → 400 on opus-4.8/4.7/4.6 + sonnet-4.6; use `output_config.format` (`output_format` deprecated).
 - Caching: prefix-match; `cache_control` ephemeral; top-level auto-cache; ≤4 breakpoints. Min cacheable prefix — live doc authoritative: **opus-4-8 = 1024** (older cached table said 4096 — nuance flagged), sonnet-4-6 = 1024, **haiku-4-5 = 4096**, opus-4.7/4.6/4.5 = 4096. read 0.1x / 5m write 1.25x / 1h write 2x. Verify via `usage.cache_read_input_tokens`.
 - Stream when `max_tokens` > 16000. Batch API = 50% off, **NOT ZDR-eligible**. Prompt caching **IS** ZDR-eligible.

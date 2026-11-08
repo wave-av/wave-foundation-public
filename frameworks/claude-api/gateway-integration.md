@@ -52,14 +52,15 @@ the request before forwarding. The call site may emit a generation-neutral body;
 |---|---------|-----|--------------------|
 | 1 | **Strip `temperature` / `top_p` / `top_k`** | removed on Opus 4.8/4.7 | any one present → **HTTP 400** |
 | 2 | **Strip `thinking.budget_tokens`**; force `thinking={type:"adaptive"}` | `budget_tokens` removed on Opus 4.8/4.7 | `{type:"enabled",budget_tokens}` → **HTTP 400** |
-| 3 | **Set `output_config.effort`** from the routing profile (`low\|medium\|high\|max`, plus `xhigh` on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable); default `high` | effort replaces sampling as the steering knob | silent under-/over-spend |
+| 3 | **Set `output_config.effort`** from the routing profile (`low\|medium\|high\|max`, plus `xhigh` on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable); default `high` (`medium` on Opus 5.5 and Haiku 5.5) | effort replaces sampling as the steering knob | silent under-/over-spend |
 | 4 | **Reject last-assistant-turn prefill**; convert to `output_config.format` or a system instruction | prefills removed on Opus 4.8/4.7/4.6 + Sonnet 4.6 | trailing `assistant` turn → **HTTP 400** |
 | 5 | **Inject `cache_control`** on the last SHARED block (tools/system), respecting render order **tools → system → messages**; ≤ 4 breakpoints | byte-stable prefix = cache hit | `cache_read_input_tokens=0`, full re-bill |
 | 6 | **Stream when `max_tokens > ~16000`** and collect via `.get_final_message()` / `.finalMessage()` | non-stream long output risks SDK timeout | dropped/timed-out response |
 
 > **Sonnet 4.6 / Haiku 4.5 carve-out:** the rewrite is **model-conditional**. `temperature` / `top_p` /
 > `top_k` are still accepted only by Sonnet 4.6, Opus 4.6 and Haiku 4.5 (and older), and only on
-> `anthropic-version: 2023-06-01` (rule 1 is a no-op there); on `2026-10-21` every model returns a 400.
+> `anthropic-version: 2023-06-01` with thinking off (rule 1 is a no-op there); with thinking on they are
+> restricted on every model, and on `2026-10-21` every model returns a 400.
 > Sonnet 5.5 and Haiku 5.5 return a 400 on a non-default value and Sonnet 5 on any value, so rule 1
 > applies to them as it does on Opus 4.7+. Haiku 4.5 has no `effort`. The chassis keys the rewrite off
 > the resolved alias, not the tier name.
@@ -98,7 +99,8 @@ The neutral body is portable across tiers (local 30B / Sonnet / Haiku); the Opus
   cache (`content:[]`) so the first real user request reads it. Put `cache_control` on the last shared
   block (system/tools), not on the placeholder user message.
 - **Operator instructions mid-conversation**: append a `{role:"system", ...}` entry to `messages[]`
-  (beta `mid-conversation-system-2026-04-07`). **Never** edit top-level `system` — that mutates the
+  (no beta header; Opus 4.8+, Sonnet 5.5, Haiku 5.5 and Fable — not Sonnet 5, which returns a 400).
+  **Never** edit top-level `system` — that mutates the
   cached prefix and invalidates everything after it.
 
 ## Verify the binding works
@@ -116,7 +118,7 @@ The neutral body is portable across tiers (local 30B / Sonnet / Haiku); the Opus
 - ❌ Hardcoding the model alias at the call site instead of taking it from routing config.
 - ❌ Hand-rolled retries with the provider SDK — use the gateway's retry semantics (see [`model-routing`](../model-routing/README.md#anti-patterns)).
 - ❌ Forwarding `temperature` / `top_p` / `top_k` / `thinking.budget_tokens` to an Opus-tier frontier (→ 400) — the chassis must strip them.
-- ❌ Keying rule 1 off the tier name instead of the resolved alias: forwarding a non-default `temperature` / `top_p` / `top_k` to Sonnet 5.5, Sonnet 5 or Haiku 5.5 returns a 400, while on `2023-06-01` they are still valid on Sonnet 4.6 and Haiku 4.5.
+- ❌ Keying rule 1 off the tier name instead of the resolved alias: forwarding a non-default `temperature` / `top_p` / `top_k` to Sonnet 5.5, Sonnet 5 or Haiku 5.5 returns a 400, while on `2023-06-01` with thinking off they are still valid on Sonnet 4.6 and Haiku 4.5.
 - ❌ Date-suffixing an alias (`claude-opus-4-8-20260...`) anywhere in routing or call config.
 - ❌ Setting `cache_control` on the per-request placeholder/user message instead of the last shared block (no prefix to reuse).
 

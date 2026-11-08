@@ -47,12 +47,14 @@ this is a hard break, not a deprecation warning. Migrate before flipping the mod
 
 - **Adaptive only on Opus 4.8/4.7.** `thinking={type:"adaptive"}`. The `enabled`+`budget_tokens` form
   is gone (400). `budget_tokens` does not map to anything — drop it, don't translate it.
-- **`output_config.effort`** = `low|medium|high|max` (default `high`). `xhigh` exists on Opus 4.7+,
+- **`output_config.effort`** = `low|medium|high|max` (default `high`; `medium` on Opus 5.5 and Haiku
+  5.5). `xhigh` exists on Opus 4.7+,
   Sonnet 5+, Haiku 5.5 and Fable (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
   Use `effort` where you used to use `budget_tokens` to dial reasoning depth.
 - **Reasoning text is hidden by default.** `thinking.display` defaults to `"omitted"` (reasoning text
   empty). Set `thinking.display:"summarized"` to surface progress in UI.
-- **Sonnet 4.6** still accepts `temperature` on `anthropic-version: 2023-06-01` (Opus 4.8/4.7 do not;
+- **Sonnet 4.6** still accepts `temperature` on `anthropic-version: 2023-06-01` with thinking off (Opus
+  4.8/4.7 do not;
   on `2026-10-21` every model returns a 400); supports adaptive thinking + `effort` (default `high`);
   `budget_tokens` deprecated there too.
 - **Sonnet 5.5** (the target for Sonnet 4.5 and older) does **not**: a non-default `temperature` /

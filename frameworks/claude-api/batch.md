@@ -34,8 +34,9 @@ applies *inside* each batched request — the batch envelope does not relax them
   balanced, `haiku-4-5` fast.
 - **Opus 4.8/4.7**: thinking is adaptive-only (`thinking.budget_tokens` → **400**);
   `temperature`/`top_p`/`top_k` → **400**. Reasoning depth goes in
-  `output_config.effort` (`low|medium|high|max`, +`xhigh`); default `high`; `xhigh`/`max` are
-  Opus-only; **`effort` ERRORS on `haiku-4-5`**. `thinking.display` is `omitted|summarized`.
+  `output_config.effort` (`low|medium|high|max`, +`xhigh`); default `high` (`medium` on Opus 5.5 and
+  Haiku 5.5); `xhigh` on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable, `max` on Opus/Sonnet 4.6 and later;
+  **`effort` ERRORS on `haiku-4-5`**. `thinking.display` is `omitted|summarized`.
 - Last-assistant **prefill** → **400** on opus-4.8/4.7/4.6 + sonnet-4.6; use `output_config.format`
   (`output_format` is deprecated).
 - Structured-output and tool-use shapes are unchanged from synchronous.

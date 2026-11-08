@@ -76,7 +76,7 @@ caching the same way everywhere.
 
 Per-model parameter rules (these are model properties, not platform properties — they hold on every surface):
 
-- **Opus 4.8/4.7:** thinking is **adaptive only** (`thinking.budget_tokens` → 400; `temperature`/`top_p`/`top_k` → 400). Reasoning depth is set via `output_config.effort` (`low|medium|high`, default `high`; `xhigh`/`max` Opus-only). `effort` **errors on `haiku-4-5`**. `thinking.display` = `omitted|summarized`.
+- **Opus 4.8/4.7:** thinking is **adaptive only** (`thinking.budget_tokens` → 400; `temperature`/`top_p`/`top_k` → 400). Reasoning depth is set via `output_config.effort` (`low|medium|high|max`, default `high`, `medium` on Opus 5.5 and Haiku 5.5; `xhigh` on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable; `max` on Opus/Sonnet 4.6 and later). `effort` **errors on `haiku-4-5`**. `thinking.display` = `omitted|summarized`.
 - **Last-assistant prefill** → 400 on `opus-4.8/4.7/4.6` + `sonnet-4.6`; use `output_config.format` (the `output_format` field is deprecated).
 - **Caching:** prefix-match, `cache_control: ephemeral`, top-level auto-cache, max 4 breakpoints. Min cacheable prefix: **opus-4-8 = 1024** (live-doc authoritative — an older cached table said 4096; treat 1024 as current and flag if a platform rejects it), sonnet-4-6 = 1024, haiku-4-5 = 4096. Pricing: read **0.1x**, 5m write **1.25x**, 1h write **2x**.
 - **Stream when `max_tokens > 16000`** (long generations on any surface).

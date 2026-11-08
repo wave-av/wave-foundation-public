@@ -129,7 +129,8 @@ message into `messages[]`:
 { "role": "system", "content": "Operator: switch to terse mode." }
 ```
 
-Requires the `mid-conversation-system-2026-04-07` beta header. Because it lands at the end of `messages`
+No beta header; supported on Opus 4.8+, Sonnet 5.5, Haiku 5.5 and Fable — not Sonnet 5, which returns a
+400. Because it lands at the end of `messages`
 (after the last breakpoint), the cached `tools` + top-level `system` prefix stays intact and keeps hitting.
 
 ## WAVE note — caching on the gateway/chassis frontier

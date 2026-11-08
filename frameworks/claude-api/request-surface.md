@@ -16,8 +16,8 @@ one in code.
 
 | Alias | Role | Context | Max output | Notes |
 |-------|------|---------|-----------|-------|
-| `claude-opus-4-8` | Default frontier / reasoning | 1M | 128K | most-capable; `max`+`xhigh` effort |
-| `claude-sonnet-4-6` | Balanced | 1M | 64K | `temperature` still accepted |
+| `claude-opus-4-8` | Default frontier / reasoning | 1M | 128K | still served (current Opus is `claude-opus-5-5`, most capable is `claude-fable-5-1`); `max`+`xhigh` effort |
+| `claude-sonnet-4-6` | Balanced | 1M | 128K | `temperature` accepted on `2023-06-01` (thinking off) |
 | `claude-haiku-4-5` | Fast / cheap | 200K | — | |
 
 **Migrate stale IDs:**
@@ -34,11 +34,13 @@ one in code.
   returns **HTTP 400** — `budget_tokens` is **fully removed** on Opus 4.8/4.7.
 - **Sampling params removed:** `temperature` / `top_p` / `top_k` are **removed** on Opus 4.8/4.7.
   Sending *any* of them returns **HTTP 400**. Steer via prompting + effort instead.
-- **Effort** lives in `output_config.effort = low|medium|high|max` (`xhigh` on 4.7/4.8). Default `high`.
-  `max` and `xhigh` are **Opus-tier only**.
+- **Effort** lives in `output_config.effort = low|medium|high|max` (+ `xhigh`). Default `high` (`medium`
+  on Opus 5.5 and Haiku 5.5). `xhigh` exists on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable (not
+  Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
 - `thinking.display` defaults to `"omitted"` (reasoning text empty). Set `"summarized"` to surface progress.
 - **Sonnet 4.6:** adaptive thinking + effort supported (default `high`); `budget_tokens` deprecated;
-  `temperature` still accepted (but Opus 4.8/4.7 rejects it).
+  `temperature` still accepted on `2023-06-01` with thinking off (but Opus 4.8/4.7 rejects it; on
+  `2026-10-21` every model returns a 400).
 
 ## Request surface rules
 
@@ -172,8 +174,8 @@ prefix invalidates **everything after it**.
 - **Pre-warm:** a `max_tokens: 0` request writes the cache and returns `content: []`. Put the
   `cache_control` on the last **shared** block (`system`/`tools`), not on the placeholder user message.
 - **Mid-conversation operator instructions:** append `{"role":"system",...}` to `messages[]`
-  (beta `mid-conversation-system-2026-04-07`) instead of editing the top-level `system` — this preserves
-  the cached prefix.
+  (no beta header; Opus 4.8+, Sonnet 5.5, Haiku 5.5 and Fable — not Sonnet 5, which returns a 400)
+  instead of editing the top-level `system` — this preserves the cached prefix.
 
 ### Pricing (`claude-opus-4-8`, per MTok)
 
