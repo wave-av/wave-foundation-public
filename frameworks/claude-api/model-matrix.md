@@ -15,10 +15,10 @@
 |---|---|---|---|---|
 | **Role** | frontier / reasoning | prev frontier | balanced | fast / cheap |
 | **Context window** | 1M | 1M | 1M | 200K |
-| **Max output** | 128K | 128K | 64K | see model-comparison |
-| **Thinking mode** | **adaptive only** | **adaptive only** | adaptive (+ deprecated manual) | adaptive |
+| **Max output** | 128K | 128K | 128K | see model-comparison |
+| **Thinking mode** | **adaptive only** | **adaptive only** | adaptive (+ deprecated manual) | manual (`budget_tokens`) only |
 | **`thinking.budget_tokens`** | ❌ **400** | ❌ **400** | accepted but **deprecated** | accepted |
-| **`temperature`/`top_p`/`top_k`** | ❌ **400** | ❌ **400** | accepted | accepted |
+| **`temperature`/`top_p`/`top_k`** | ❌ **400** | ❌ **400** | accepted on `2023-06-01` (thinking off) | accepted on `2023-06-01` (thinking off) |
 | **`output_config.effort`** | low/med/high/**xhigh**/**max** | low/med/high/**xhigh**/**max** | low/med/high/**max** | ❌ **not supported** |
 | **Effort default** | `high` | `high` | `high` | n/a |
 | **`thinking.display` default** | `omitted` | `omitted` | `summarized` | `summarized` |
@@ -82,21 +82,24 @@ client.messages.create(
 
 ### Effort (`output_config.effort`)
 
-`low | medium | high | xhigh | max`. Default `high` (omitting == `high`). **`xhigh` and `max` are
-Opus-only** (Opus 4.8/4.7). **`effort` is not supported on `claude-haiku-4-5`** — Haiku is absent from
-the effort supported-models list; sending `effort` to Haiku is a request-shape error.
+`low | medium | high | xhigh | max`. Default `high` (omitting == `high`), except `medium` on Opus 5.5 and
+Haiku 5.5. **`xhigh` exists on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.** **`effort` is not supported on `claude-haiku-4-5`** — Haiku 4.5
+is absent from the effort supported-models list; sending `effort` to it is a request-shape error.
 
-- ❌ `output_config={"effort":"xhigh"}` on Sonnet 4.6 (max is fine, xhigh is Opus-only).
+- ❌ `output_config={"effort":"xhigh"}` on Sonnet 4.6 (max is fine; `xhigh` needs Opus 4.7+, Sonnet 5+,
+  Haiku 5.5 or Fable).
 - ❌ Any `effort` on Haiku 4.5 → **drop it** and route the cheap path without the knob.
 - ✅ Opus coding/agentic: start at **`xhigh`** with a large `max_tokens` (≥64K). Sonnet default
   workflow: **`medium`**. Latency-critical Sonnet: **`low`**.
 
 ```python
+NO_XHIGH = ("claude-opus-4-6", "claude-sonnet-4-6")  # Opus/Sonnet 4.6 have max but not xhigh
+
 def effort_for(model: str, want: str) -> dict:
-    if model.startswith("claude-haiku"):
-        return {}                            # Haiku: effort unsupported — omit
-    if want in ("xhigh",) and not model.startswith("claude-opus"):
-        want = "max" if want == "xhigh" else want   # xhigh is Opus-only
+    if model.startswith("claude-haiku-4-5"):
+        return {}                            # Haiku 4.5: effort unsupported — omit
+    if want == "xhigh" and model.startswith(NO_XHIGH):
+        want = "max"                         # nearest supported level on 4.6
     return {"effort": want}
 ```
 

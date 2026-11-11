@@ -24,8 +24,8 @@ Use these exact strings. Never add a date suffix to an alias.
 
 | If code/config says… | Migrate to | Tier role |
 |----------------------|-----------|-----------|
-| `claude-opus-4-7`, `-4-6`, `-4-5`, `-4-1`, `-4-0` | **`claude-opus-4-8`** | most-capable; default frontier/reasoning. 1M ctx, 128K out |
-| `claude-sonnet-4-5`, `-4-0`, `-3-*` (any 3.x) | **`claude-sonnet-4-6`** | balanced. 1M ctx, 64K out |
+| `claude-opus-4-7`, `-4-6`, `-4-5`, `-4-1`, `-4-0` | **`claude-opus-4-8`** | WAVE frontier/reasoning target (still served; current Opus is `claude-opus-5-5`, most capable is `claude-fable-5-1`). 1M ctx, 128K out |
+| `claude-sonnet-4-5`, `-4-0`, `-3-*` (any 3.x) | **`claude-sonnet-5-5`** | balanced. 1M ctx, 128K out. Sonnet 4.5 retires 2026-11-30 |
 | `claude-haiku-3-*` (any 3.x) | **`claude-haiku-4-5`** | fast/cheap. 200K ctx |
 | any `claude-opus-4-6-YYYYMMDD` (date-suffixed) | strip suffix → **`claude-opus-4-8`** | date-suffixed aliases are an anti-pattern |
 
@@ -47,13 +47,23 @@ this is a hard break, not a deprecation warning. Migrate before flipping the mod
 
 - **Adaptive only on Opus 4.8/4.7.** `thinking={type:"adaptive"}`. The `enabled`+`budget_tokens` form
   is gone (400). `budget_tokens` does not map to anything — drop it, don't translate it.
-- **`output_config.effort`** = `low|medium|high|max` (default `high`). `max` and `xhigh` are
-  **Opus-tier only**; `xhigh` exists on 4.7/4.8. Use `effort` where you used to use `budget_tokens`
-  to dial reasoning depth.
+- **`output_config.effort`** = `low|medium|high|max` (default `high`; `medium` on Opus 5.5 and Haiku
+  5.5). `xhigh` exists on Opus 4.7+,
+  Sonnet 5+, Haiku 5.5 and Fable (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
+  Use `effort` where you used to use `budget_tokens` to dial reasoning depth.
 - **Reasoning text is hidden by default.** `thinking.display` defaults to `"omitted"` (reasoning text
   empty). Set `thinking.display:"summarized"` to surface progress in UI.
-- **Sonnet 4.6** still **accepts `temperature`** (Opus 4.8/4.7 do not); supports adaptive thinking +
-  `effort` (default `high`); `budget_tokens` deprecated there too.
+- **Sonnet 4.6** still accepts `temperature` on `anthropic-version: 2023-06-01` with thinking off (Opus
+  4.8/4.7 do not;
+  on `2026-10-21` every model returns a 400); supports adaptive thinking + `effort` (default `high`);
+  `budget_tokens` deprecated there too.
+- **Sonnet 5.5** (the target for Sonnet 4.5 and older) does **not**: a non-default `temperature` /
+  `top_p` / `top_k` returns **400**, and so do `budget_tokens` and `thinking={type:"disabled"}`. To
+  turn thinking down, try adaptive thinking at `effort:"low"` first; if a route must stay
+  thinking-off, send `thinking={type:"between_tools"}`. That value is Sonnet 5.5 only: effort
+  `xhigh`/`max`, any other field inside `thinking`, changing effort per message, or sending it to
+  any other model returns a 400. Thinking runs adaptive by default, so read the first `text` block
+  of `content`, not `content[0]`. `effort` defaults to `high`.
 
 ### Stop-reason handling (all tiers)
 
@@ -99,9 +109,9 @@ Per the live Anthropic prompt-caching doc:
   a varying tool set ahead of the breakpoint.
 - **Pre-warm:** a `max_tokens:0` request writes the cache and returns `content:[]`. Put the
   `cache_control` on the last **shared** block (system / tools), **not** on a placeholder user msg.
-- **Mid-conversation operator instructions:** append `{role:"system", ...}` to `messages[]`
-  (beta `mid-conversation-system-2026-04-07`) instead of editing the top-level `system` — editing
-  top-level `system` busts the entire cached prefix.
+- **Mid-conversation operator instructions:** append `{role:"system", ...}` to `messages[]` (no beta
+  header; Opus 4.8+, Sonnet 5.5, Haiku 5.5, Fable — not Sonnet 5, which returns a 400) instead of
+  editing the top-level `system` — editing top-level `system` busts the entire cached prefix.
 
 ## Migration checklist: [BLOCKS] vs [TUNE]
 
@@ -116,10 +126,10 @@ Per the live Anthropic prompt-caching doc:
 - [TUNE] Top-level `output_format` → `output_config.format` (canonical).
 - [TUNE] No `stop_reason` branch for `refusal` / `model_context_window_exceeded` / `pause_turn`.
 - [TUNE] No prompt caching on a repeated-prefix workload, or `cache_read_input_tokens==0` (silent invalidator).
-- [TUNE] Prefix below the model minimum (1,024 for 4.8/4.6; 4,096 for Haiku 4.5) → won't cache.
+- [TUNE] Prefix below the model minimum (1,024 for Opus 4.8 / Sonnet 4.6; 4,096 for Haiku 4.5 and Opus 4.6) → won't cache.
 - [TUNE] Volatile content (timestamps/uuids) ahead of the last breakpoint → move it after.
 - [TUNE] `thinking.display` left `"omitted"` where a UI should show progress → `"summarized"`.
-- [TUNE] Editing top-level `system` mid-conversation → append `{role:"system"}` to `messages[]` instead.
+- [TUNE] Editing top-level `system` mid-conversation → append `{role:"system"}` to `messages[]` instead (no beta header; Opus 4.8+, Sonnet 5.5, Haiku 5.5, Fable — not Sonnet 5, which returns a 400).
 
 ## Anti-patterns
 

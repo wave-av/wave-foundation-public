@@ -18,9 +18,9 @@ thinking, effort up to `xhigh`. Never call it directly — it is the tier-4 subs
 
 | Model | Context | Max output | Role | Thinking | Effort ceiling | Temp/top_p/top_k |
 |-------|---------|-----------|------|----------|----------------|------------------|
-| `claude-opus-4-8` | 1M | 128K | default frontier / reasoning | adaptive only | `xhigh` | **removed (400)** |
-| `claude-sonnet-4-6` | 1M | 64K | balanced workhorse | adaptive | `high` | temperature accepted |
-| `claude-haiku-4-5` | 200K | — | fast / cheap | — | `high` | accepted |
+| `claude-opus-4-8` | 1M | 128K | default frontier / reasoning | adaptive only | `max` | **removed (400)** |
+| `claude-sonnet-4-6` | 1M | 128K | balanced workhorse | adaptive | `max` | temperature accepted on `2023-06-01` (thinking off) |
+| `claude-haiku-4-5` | 200K | — | fast / cheap | manual (`budget_tokens`) | not supported | accepted on `2023-06-01` (thinking off) |
 
 > **Aliases only — NEVER append a date suffix.** `claude-opus-4-6-20260205` is an anti-pattern. Use the
 > bare alias and let the platform resolve the snapshot.
@@ -30,7 +30,7 @@ thinking, effort up to `xhigh`. Never call it directly — it is the tier-4 subs
 | You may find | Replace with |
 |--------------|--------------|
 | `claude-opus-4-7` / `-4-6` / `-4-5` / `-4-1` / `-4-0` | `claude-opus-4-8` |
-| `claude-sonnet-4-5` / `-4-0` / `-3-*` | `claude-sonnet-4-6` |
+| `claude-sonnet-4-5` / `-4-0` / `-3-*` | `claude-sonnet-5-5` |
 | `claude-haiku-3-*` | `claude-haiku-4-5` |
 | any date-suffixed opus/sonnet alias | the bare alias |
 
@@ -57,12 +57,14 @@ frameworks/claude-config   →  Claude Code / MCP / Doppler secrets (sibling fac
   **HTTP 400** — `budget_tokens` is fully removed on Opus 4.8/4.7.
 - **Sampling params are removed**: sending *any* of `temperature` / `top_p` / `top_k` on Opus 4.8/4.7
   returns **HTTP 400**. Steer via prompting + `effort` instead.
-- **`effort`** lives in `output_config.effort` = `low | medium | high | max` (plus `xhigh` on 4.7/4.8).
-  Default `high`. `max` and `xhigh` are Opus-tier only.
+- **`effort`** lives in `output_config.effort` = `low | medium | high | max` (plus `xhigh`). Default
+  `high` (`medium` on Opus 5.5 and Haiku 5.5). `xhigh` exists on Opus 4.7+, Sonnet 5+, Haiku 5.5 and
+  Fable (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
 - `thinking.display` defaults to `"omitted"` (reasoning text empty). Set `"summarized"` to surface
   progress to operators/UI.
 - **Sonnet 4.6**: adaptive thinking supported; `effort` supported (default `high`); `budget_tokens`
-  deprecated; `temperature` **still accepted** (unlike Opus 4.8/4.7).
+  deprecated; `temperature` **still accepted** on `2023-06-01` with thinking off (unlike Opus 4.8/4.7;
+  on `2026-10-21` every model returns a 400).
 
 ## Request surface
 
@@ -103,8 +105,8 @@ it*. Render order is **tools → system → messages**.
 - **Pre-warm** with a `max_tokens:0` request: it writes the cache and returns `content:[]`. Put the
   `cache_control` on the last SHARED block (system/tools), **not** on the placeholder user message.
 - **Mid-conversation operator instructions**: append a `{role:"system", ...}` entry to `messages[]`
-  (beta `mid-conversation-system-2026-04-07`) instead of editing the top-level `system` — editing
-  top-level `system` invalidates the cached prefix.
+  (no beta header; Opus 4.8+, Sonnet 5.5, Haiku 5.5 and Fable — not Sonnet 5, which returns a 400)
+  instead of editing the top-level `system` — editing top-level `system` invalidates the cached prefix.
 
 ## What good looks like
 

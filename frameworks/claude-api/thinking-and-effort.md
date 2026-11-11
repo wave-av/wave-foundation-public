@@ -12,8 +12,8 @@
 | Alias | Role | Context | Max output | Thinking | Sampling params | `effort` levels |
 |-------|------|---------|-----------|----------|-----------------|-----------------|
 | `claude-opus-4-8` | default frontier / reasoning | 1M | 128K | adaptive only | **removed (400)** | low/medium/high/**xhigh**/**max** |
-| `claude-sonnet-4-6` | balanced | 1M | 64K | adaptive | `temperature` accepted | low/medium/high |
-| `claude-haiku-4-5` | fast / cheap | 200K | — | adaptive | `temperature` accepted | low/medium/high |
+| `claude-sonnet-4-6` | balanced | 1M | 128K | adaptive | `temperature` accepted on `2023-06-01` (thinking off) | low/medium/high/**max** |
+| `claude-haiku-4-5` | fast / cheap | 200K | — | manual (`budget_tokens`) | `temperature` accepted on `2023-06-01` (thinking off) | not supported |
 
 `claude-opus-4-7` shares Opus-4.8 semantics (adaptive-only, no sampling params, `xhigh`+`max` available).
 
@@ -28,14 +28,18 @@
   removed on Opus 4.8/4.7. There is no manual budget knob anymore; steer depth via `effort` + prompting.
 - **`thinking.display`** defaults to `"omitted"` (reasoning blocks return empty). Set `"summarized"` to
   surface progress to a user/log. Omitted is cheaper to stream and the right default for server-to-server.
-- **Sonnet 4.6 / Haiku 4.5:** adaptive thinking supported the same way; `budget_tokens` is *deprecated*
-  (ignored, not a 400) but do not send it. `temperature` is still accepted on Sonnet/Haiku.
+- **Sonnet 4.6:** adaptive thinking supported the same way; `budget_tokens` is *deprecated* (it still
+  works, as a transitional escape hatch) but do not use it in new code. **Haiku 4.5:** no adaptive
+  thinking; thinking needs `{type:"enabled", budget_tokens:N}` (at least 1024, below `max_tokens`), and
+  `effort` errors. Both accept `temperature` only on `2023-06-01` with thinking off; on `2026-10-21`
+  every model returns a 400.
 
 ## Effort (`output_config.effort`)
 
 Compute/quality dial, orthogonal to thinking. `output_config.effort = low | medium | high | max`
-(+ `xhigh` on Opus 4.7/4.8). **Default is `high`.** `max` and `xhigh` are **Opus-tier only** — sending
-them to Sonnet/Haiku is rejected.
+(+ `xhigh`). **Default is `high`** (`medium` on Opus 5.5 and Haiku 5.5). `xhigh` exists on Opus 4.7+,
+Sonnet 5+, Haiku 5.5 and Fable (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
+Sending a level the model lacks is rejected, and `effort` errors on Haiku 4.5.
 
 | effort | use when |
 |--------|----------|
@@ -76,7 +80,7 @@ resp = client.messages.create(
     max_tokens=4096,
     thinking={"type": "adaptive"},            # adaptive ONLY on Opus 4.8/4.7
     output_config={
-        "effort": "high",                     # default; "max"/"xhigh" Opus-only
+        "effort": "high",                     # default on Opus 4.8 (medium on Opus 5.5 / Haiku 5.5)
         "format": {"type": "json_schema", "schema": SCHEMA},  # replaces assistant-prefill
     },
     # NO temperature/top_p/top_k — sending any => HTTP 400 on Opus 4.8/4.7
@@ -122,7 +126,8 @@ against Opus 4.8/4.7 returns `400 invalid_request_error`.
 - ❌ Any `temperature`/`top_p`/`top_k` on Opus 4.8/4.7 → 400. Steer via prompting + `effort`.
 - ❌ Trailing assistant-turn prefill to constrain output → 400. Use `output_config.format`.
 - ❌ Top-level `output_format` (deprecated) — use `output_config.format`.
-- ❌ `effort: "max"`/`"xhigh"` on Sonnet/Haiku → rejected (Opus-tier only).
+- ❌ `effort: "xhigh"` on Opus/Sonnet 4.6, or any `effort` on Haiku 4.5 → rejected. (`xhigh` runs on
+  Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable; `max` on Opus/Sonnet 4.6 and later.)
 - ❌ Hardcoding a model alias in code — it comes from [`../model-routing`](../model-routing/README.md) config.
 - ❌ Appending a date suffix to an alias (`claude-opus-4-8-2026…`).
 - ❌ Calling direct Anthropic without going through the gateway/chassis first (loses observability + billing).

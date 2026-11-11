@@ -24,7 +24,7 @@
 
 | Model (exact ID) | Role | Pick it for |
 |------------------|------|-------------|
-| **`claude-opus-4-8`** | Most-capable; **default frontier/reasoning** | hard reasoning, agentic tool chains, production codegen, anything where a wrong answer is expensive |
+| **`claude-opus-4-8`** | **WAVE default frontier/reasoning** (still served; current Opus is `claude-opus-5-5`, most capable is `claude-fable-5-1`) | hard reasoning, agentic tool chains, production codegen, anything where a wrong answer is expensive |
 | **`claude-sonnet-4-6`** | Balanced | high-volume drafting, summarization, mid-difficulty tool use, the gateway's default frontier fallback |
 | **`claude-haiku-4-5`** | Fast / cheap | classification, routing, extraction, cheap first-draft, latency-critical surfaces |
 
@@ -36,8 +36,8 @@ model clears the bar. The router already tries local 30B *before* any of these.
 | Model | Context window | Max output tokens | Sampling params | Effort |
 |-------|----------------|-------------------|-----------------|--------|
 | `claude-opus-4-8` | 1M | 128K | **removed** (temperature/top_p/top_k → HTTP 400) | low/medium/high/max/**xhigh** (default high) |
-| `claude-sonnet-4-6` | 1M | 64K | `temperature` still accepted | low/medium/high (default high) |
-| `claude-haiku-4-5` | 200K | — | accepted | — |
+| `claude-sonnet-4-6` | 1M | 128K | `temperature` accepted on `2023-06-01` (thinking off) | low/medium/high/max (default high) |
+| `claude-haiku-4-5` | 200K | — | accepted on `2023-06-01` (thinking off) | not supported |
 
 ## Stale IDs → migrate to
 
@@ -46,7 +46,7 @@ Any ID below is retired/legacy. Replace at the routing-config level; do not leav
 | If you see… | Migrate to |
 |-------------|------------|
 | `claude-opus-4-7` / `4-6` / `4-5` / `4-1` / `4-0` | `claude-opus-4-8` |
-| `claude-sonnet-4-5` / `4-0` / `3-x` | `claude-sonnet-4-6` |
+| `claude-sonnet-4-5` / `4-0` / `3-x` | `claude-sonnet-5-5` |
 | `claude-haiku-3-x` | `claude-haiku-4-5` |
 | **any** date-suffixed opus/sonnet alias (e.g. `…-20260205`) | the bare alias above |
 
@@ -74,12 +74,14 @@ and still flow through the router.
   Opus 4.8/4.7.
 - **Sampling params removed**: sending **any** of `temperature` / `top_p` / `top_k` returns **HTTP 400**
   on Opus 4.8/4.7. Steer via prompting + `effort` instead.
-- **Effort** lives in `output_config.effort` = `low|medium|high|max` (+ `xhigh` on 4.7/4.8). Default
-  `high`. `max` and `xhigh` are Opus-tier only.
+- **Effort** lives in `output_config.effort` = `low|medium|high|max` (+ `xhigh`). Default `high`
+  (`medium` on Opus 5.5 and Haiku 5.5). `xhigh` exists on Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable
+  (not Opus/Sonnet 4.6); `max` exists on Opus/Sonnet 4.6 and later.
 - `thinking.display` defaults to `"omitted"` (reasoning text empty); set `"summarized"` to surface
   progress.
 - **Sonnet 4.6**: adaptive thinking supported; `effort` supported (default `high`); `budget_tokens`
-  deprecated; `temperature` still accepted (unlike Opus 4.8/4.7).
+  deprecated; `temperature` still accepted on `2023-06-01` with thinking off (unlike Opus 4.8/4.7; on
+  `2026-10-21` every model returns a 400).
 
 ## Request surface
 
@@ -120,8 +122,8 @@ Every spoke that calls Claude SHOULD cache its stable prefix. Mechanics:
 - **Pre-warm** with a `max_tokens:0` request — it writes the cache and returns `content:[]`. Put the
   `cache_control` on the last **shared** block (system/tools), not on a throwaway user message.
 - **Mid-conversation operator instructions**: append a `{role:"system", …}` entry to `messages[]`
-  (beta `mid-conversation-system-2026-04-07`) instead of editing the top-level `system` — editing the
-  top-level prefix invalidates the whole cache.
+  (no beta header; Opus 4.8+, Sonnet 5.5, Haiku 5.5 and Fable — not Sonnet 5, which returns a 400)
+  instead of editing the top-level `system` — editing the top-level prefix invalidates the whole cache.
 
 ## Anti-patterns
 

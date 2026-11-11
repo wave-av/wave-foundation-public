@@ -91,7 +91,8 @@ def reason(request, call):
 ```
 
 Frontier hop, when it fires, obeys the whole model-matrix: **adaptive thinking only**, steer depth
-with `output_config.effort` (default `high`; `xhigh`/`max` Opus-only), **no** `temperature` /
+with `output_config.effort` (default `high`, `medium` on Opus 5.5 and Haiku 5.5; `xhigh` on Opus 4.7+,
+Sonnet 5+, Haiku 5.5 and Fable; `max` on Opus/Sonnet 4.6 and later), **no** `temperature` /
 `top_p` / `top_k`, **no** `thinking.budget_tokens`, **no** last-assistant prefill — all 400 on
 `claude-opus-4-8`. See [`model-matrix.md`](./model-matrix.md).
 
@@ -101,7 +102,7 @@ resp = client.messages.create(
     model=route.model,                       # routed, default claude-opus-4-8 — never inlined
     max_tokens=32000,
     thinking={"type": "adaptive"},           # 400 if {"type":"enabled","budget_tokens":N}
-    output_config={"effort": "xhigh"},       # low|medium|high|xhigh|max — xhigh Opus-only
+    output_config={"effort": "xhigh"},       # low|medium|high|xhigh|max — xhigh: Opus 4.7+, Sonnet 5+, Haiku 5.5, Fable
 )
 # Stream when max_tokens > 16000 (SDK timeout risk on long non-streaming generations).
 ```
